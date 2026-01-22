@@ -1,0 +1,33 @@
+{
+	"name": "goodreads-review",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"format": "prettier --write .",
+		"lint": "prettier --check ."
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/adapter-vercel": "^6.3.0",
+		"@sveltejs/kit": "^2.49.1",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"d3": "^7.9.0",
+		"prettier": "^3.7.4",
+		"prettier-plugin-svelte": "^3.4.0",
+		"svelte": "^5.45.6",
+		"svelte-confetti": "^2.3.2",
+		"vite": "^7.2.6",
+		"vite-plugin-devtools-json": "^1.0.0"
+	},
+	"dependencies": {
+		"@vercel/analytics": "^1.6.1",
+		"linkedom": "^0.18.12",
+		"node-html-parser": "^7.0.2",
+		"rss-parser": "^3.13.0"
+	}
+}

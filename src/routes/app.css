@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&display=swap');
+
+
+* {
+	margin: 0;
+	box-sizing: border-box;
+	font-family: "Roboto", sans-serif;
+	font-optical-sizing: auto;
+	font-style: normal;
+	--rotation-xyz: 0 !important;
+}
+
+body {
+	min-height: 100dvh;
+	background-color: rgba(244, 241, 234, 0.5);
+}
+
+.text-container {
+	max-width: 660px;
+	margin: 0 auto;
+	color: #444;
+
+	p {
+		margin-bottom: 2cap;
+		font-size: 1.25rem;
+		text-wrap: pretty;
+	}
+
+	p,
+	div {
+		font-weight: 300;
+	}
+
+	i {
+		font-style: italic;
+		font-weight: 600;
+	}
+
+	b {
+		font-weight: 600;
+	}
+}
+
+main {
+	width: min(97%, 1250px);
+	margin: 0 auto;
+	min-height: 97dvh;
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	justify-content: center;
+}
+
+section {
+	width: 100%;
+	height: fit-content;
+
+	&#id-input {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-block: 5rem;
+		max-width: 660px;
+		width: 100%;
+		background-color: white;
+		padding: 3rem;
+		border-radius: 15px;
+		border: solid 2px #d8d8d8;
+		box-shadow: 0 0 10px 0 #d8d8d8;
+	}
+}
+
+@media (width < 550px) {
+	section#id-input {
+		padding: 1rem;
+	}
+}
+
+h1 {
+	margin: 0;
+	text-align: center;
+	font-size: 3rem;
+	font-family: "Merriweather", serif;
+	margin-bottom: 1.5rem;
+}
+
+details {
+	width: 100%;
+	margin-top: 1rem;
+	color: #444;
+	overflow: hidden;
+
+	& summary {
+		cursor: pointer;
+	}
+
+	& p {
+		margin-left: 1rem;
+		margin-top: 0.5rem;
+	}
+
+	& code {
+		color: #409d69;
+	}
+}
+
+.input-container {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 1rem;
+	max-width: 660px;
+	width: 100%;
+}
+
+input {
+	flex: 1;
+	padding: 0.5rem;
+	font-size: 1rem;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+}
+
+input:disabled {
+	background-color: #f5f5f5;
+	cursor: not-allowed;
+}
+
+button {
+	padding: 0.5rem 1.5rem;
+	font-size: 1rem;
+	background-color: #409d69;
+	color: white;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+
+/*button:hover:not(:disabled) {
+	background-color: #409d69;
+}*/
+
+button:disabled {
+	background-color: #cccccc;
+	cursor: not-allowed;
+}
+
+.error {
+	color: #d32f2f;
+	margin-top: 1rem;
+	padding: 0.5rem;
+	background-color: #ffebee;
+	border-radius: 4px;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+input[type='number'] {
+	appearance: textfiled;
+	-moz-appearance: textfield;
+}
+
+.bookTitle {
+	font-family: "Merriweather", serif;
+	font-optical-sizing: auto;
+	font-weight: 700;
+}
+
+.section-margin {
+	margin-bottom: 5rem;
+}
+
+footer a {
+	color: black;
+}
