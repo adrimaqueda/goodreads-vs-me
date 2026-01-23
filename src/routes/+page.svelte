@@ -24,11 +24,22 @@
 
 		try {
 			const result = await getCachedOrFetchData(goodreadsId.toString());
-			data = result;
+
+			// Verificar si la respuesta indica error
+			if (!result.success) {
+				if (result.isPrivateShelf) {
+					error = '🔒 La librería de este usuario es privada. No puedo acceder a los libros.';
+				} else {
+					error = result.message || 'Error al obtener datos de Goodreads';
+				}
+				data = null;
+			} else {
+				data = result;
+			}
 		} catch (err) {
-			error = err.message || 'Error al obtener datos de Goodreads';
+			error = err instanceof Error ? err.message : 'Error al obtener datos de Goodreads';
 			console.error('❌ Error:', err);
-			data = null; // Solo limpiamos data si hay error
+			data = null;
 		} finally {
 			loading = false;
 		}
