@@ -84,8 +84,6 @@
 		return base.range([3, ratio]);
 	});
 
-	$inspect(radiusScale.range()[1]);
-
 	let maxGroupSize = $derived.by(() => {
 		let midR = radiusScale.range()[1] - (radiusScale.range()[1] - radiusScale.range()[0]) / 2;
 

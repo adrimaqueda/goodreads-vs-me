@@ -70,7 +70,7 @@
 	});
 
 	$effect(() => {
-		ctx = canvas.getContext('2d', { willReadFrequently: true });
+		ctx = canvas.getContext('2d');
 
 		return () => {
 			if (frameId) {

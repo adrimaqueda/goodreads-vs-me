@@ -1,5 +1,6 @@
 // src/lib/goodreads.ts
 import { parse as parseHtml } from 'node-html-parser';
+import { parseHTML } from 'linkedom';
 
 export function parseGoodreadsContent(text: string): Record<string, string> {
 	// Reemplazamos <br>, <br/> y variantes por saltos de línea para preservar separaciones
@@ -92,7 +93,6 @@ export async function scrapeBookMetadata(bookUrl: string) {
 		const html = await response.text();
 
 		// Usar linkedom para parsear HTML en Node.js
-		const { parseHTML } = await import('linkedom');
 		const { document } = parseHTML(html);
 
 		// Extraer géneros del DOM
