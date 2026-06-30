@@ -29,7 +29,7 @@ interface CachedData {
 
 const parser = new Parser({});
 
-// Caché en memoria por usuario
+// Caché de datos completos por usuario (libros + metadatos ya scrapeados).
 const caches = new Map<string, CachedData>();
 const CACHE_DURATION = 1000 * 60 * 60 * 24; // 1 día
 
@@ -38,9 +38,7 @@ const CACHE_DURATION = 1000 * 60 * 60 * 24; // 1 día
 type BookMetadata = Awaited<ReturnType<typeof scrapeBookMetadata>>;
 const metadataCache = new Map<string, BookMetadata>();
 
-// Límite de peticiones simultáneas al scrapear metadatos. Lanzar cientos de
-// fetch a la vez agota los sockets de la función serverless y hace que
-// Goodreads nos limite; un pool acotado es más rápido y fiable.
+// Límite de peticiones simultáneas al scrapear metadatos dentro de un lote.
 const SCRAPE_CONCURRENCY = 10;
 
 async function getBookMetadata(url: string): Promise<BookMetadata> {
@@ -84,11 +82,35 @@ async function fetchRssPage(userId: string, page: number, perPage: number) {
 	return parser.parseString(xml);
 }
 
-async function fetchGoodreadsData(userId: string) {
+// Construye un libro con los datos del RSS, sin los metadatos (géneros y número
+// de páginas), que requieren scrapear la página individual de cada libro.
+function buildBasicBook(item: GoodreadsRSSItem, i: number) {
+	const parsed = parseGoodreadsContent(item.content ?? '');
+
+	return {
+		title: item.title ?? '',
+		pubDate: item.pubDate ?? '',
+		isoDate: item.isoDate ?? '',
+		id: i,
+		url: parsed.url,
+		img: parsed.img,
+		author: parsed['author'] ?? '',
+		average: +parsed['average rating'] || 0,
+		'book published': parsed['book published'] ?? '',
+		rating: +parsed['rating'] || 0,
+		'read at': parsed['read at'] ?? '',
+		'date added': parsed['date added'] ? new Date(parsed['date added']) : null,
+		shelves: parsed['shelves'] === '' ? ['read'] : parsed['shelves'].split(', '),
+		genres: [] as string[],
+		numberOfPages: 0
+	};
+}
+
+async function fetchBookList(userId: string) {
 	const per_page = 200;
 	let page = 1;
 
-	let allItems: GoodreadsRSSItem[] = [];
+	const allItems: GoodreadsRSSItem[] = [];
 	let lastUpdate: string | undefined = undefined;
 
 	// La comprobación de librería privada va incluida en la primera página,
@@ -107,50 +129,20 @@ async function fetchGoodreadsData(userId: string) {
 		page++;
 	}
 
-	const books = await mapWithConcurrency(allItems, SCRAPE_CONCURRENCY, async (item, i) => {
-		const parsed = parseGoodreadsContent(item.content ?? '');
-
-		let metadata: BookMetadata = { genres: [], numberOfPages: 0 };
-		if (parsed.url && parsed.rating !== '0') {
-			try {
-				metadata = await getBookMetadata(parsed.url);
-			} catch (error) {
-				console.warn(`⚠️ Error scraping metadata for ${item.title}:`, error);
-			}
-		}
-
-		return {
-			title: item.title ?? '',
-			pubDate: item.pubDate ?? '',
-			isoDate: item.isoDate ?? '',
-			id: i,
-			url: parsed.url,
-			img: parsed.img,
-			author: parsed['author'] ?? '',
-			average: +parsed['average rating'] || 0,
-			'book published': parsed['book published'] ?? '',
-			rating: +parsed['rating'] || 0,
-			'read at': parsed['read at'] ?? '',
-			'date added': parsed['date added'] ? new Date(parsed['date added']) : null,
-			shelves: parsed['shelves'] === '' ? ['read'] : parsed['shelves'].split(', '),
-			genres: metadata.genres,
-			numberOfPages: metadata.numberOfPages
-		};
-	});
-
+	const books = allItems.map((item, i) => buildBasicBook(item, i));
 	const shelves = [...new Set(books.flatMap((d) => d.shelves))];
 
-	return {
-		lastUpdate,
-		books,
-		shelves
-	};
+	return { lastUpdate, books, shelves };
 }
 
-export const getCachedOrFetchData = command('unchecked', async (userId: string) => {
-	console.log('getCachedOrFetchData llamado para usuario:', userId);
+function isValidUserId(userId: unknown): userId is string {
+	return typeof userId === 'string' && userId.length > 0;
+}
 
-	if (!userId || typeof userId !== 'string') {
+// Paso 1 — Lista de libros (RSS). Es rápido: no scrapea metadatos. Si hay datos
+// completos en caché para el usuario, se devuelven directamente.
+export const getBookList = command('unchecked', async (userId: string) => {
+	if (!isValidUserId(userId)) {
 		return {
 			success: false,
 			isPrivateShelf: false,
@@ -158,44 +150,25 @@ export const getCachedOrFetchData = command('unchecked', async (userId: string) 
 		};
 	}
 
-	const now = Date.now();
 	const cache = caches.get(userId);
-
-	// Si hay caché y no ha expirado, retornar caché
-	if (cache && now - cache.timestamp < CACHE_DURATION) {
-		console.log('📦 Sirviendo datos desde caché para usuario:', userId);
+	if (cache && Date.now() - cache.timestamp < CACHE_DURATION) {
+		console.log('📦 Sirviendo datos completos desde caché para usuario:', userId);
 		return {
 			success: true,
+			complete: true,
 			lastUpdate: cache.lastUpdate,
 			books: cache.books,
 			shelves: cache.shelves
 		};
 	}
 
-	// Si no hay caché o ha expirado, hacer fetch
-	console.log('🔄 Actualizando datos desde Goodreads para usuario:', userId);
 	try {
-		const data = await fetchGoodreadsData(userId);
-
-		// Guardar en caché
-		caches.set(userId, {
-			...data,
-			userId,
-			timestamp: now
-		});
-
-		return {
-			success: true,
-			...data
-		};
+		const data = await fetchBookList(userId);
+		return { success: true, complete: false, ...data };
 	} catch (err) {
 		if (err instanceof PrivateShelfError) {
 			console.error(`🔒 La librería del usuario ${userId} es privada`);
-			return {
-				success: false,
-				isPrivateShelf: true,
-				message: err.message
-			};
+			return { success: false, isPrivateShelf: true, message: err.message };
 		}
 		return {
 			success: false,
@@ -204,3 +177,41 @@ export const getCachedOrFetchData = command('unchecked', async (userId: string) 
 		};
 	}
 });
+
+// Paso 2 — Metadatos de un lote de libros. El cliente lo llama por tandas para
+// mostrar progreso y mantener cada petición muy por debajo del tiempo límite de
+// la función serverless.
+export const fetchMetadataBatch = command('unchecked', async (urls: string[]) => {
+	if (!Array.isArray(urls)) return [];
+
+	return mapWithConcurrency(urls, SCRAPE_CONCURRENCY, async (url) => {
+		try {
+			const metadata = await getBookMetadata(url);
+			return { url, genres: metadata.genres, numberOfPages: metadata.numberOfPages };
+		} catch (error) {
+			console.warn(`⚠️ Error scraping metadata for ${url}:`, error);
+			return { url, genres: [] as string[], numberOfPages: 0 };
+		}
+	});
+});
+
+// Paso 3 (opcional) — Guarda el conjunto ya enriquecido en caché para que las
+// siguientes cargas del mismo usuario sean instantáneas.
+export const cacheUserData = command(
+	'unchecked',
+	async (payload: { userId: string; books: any[]; shelves: string[]; lastUpdate?: string }) => {
+		if (!payload || !isValidUserId(payload.userId) || !Array.isArray(payload.books)) {
+			return { success: false };
+		}
+
+		caches.set(payload.userId, {
+			userId: payload.userId,
+			books: payload.books,
+			shelves: payload.shelves ?? [],
+			lastUpdate: payload.lastUpdate,
+			timestamp: Date.now()
+		});
+
+		return { success: true };
+	}
+);
