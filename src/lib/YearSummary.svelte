@@ -6,8 +6,12 @@
 
 	let { books } = $props();
 
+	// Sólo libros con puntuación: los leídos sin puntuar entraban en el
+	// recuento de "libros puntuados" y como ceros en la puntuación media.
+	let ratedBooks = $derived(books.filter((d) => d.rating !== 0));
+
 	let years = $derived(
-		groups(books, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
 			.map((d) => ({ year: +d[0], books: d[1] }))
 			.filter((d) => d.year !== 0)
 	);
@@ -40,7 +44,7 @@
 	// Scatterplot
 
 	let pagesRecount = $derived(
-		groups(books, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
 			.map((d) => ({
 				año: +d[0],
 				'libros puntuados': d[1].length,
