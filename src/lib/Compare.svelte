@@ -346,7 +346,7 @@
 		{/each}
 	</CanvasWrapper>
 
-	{#if hoveredBookId && hoverBookInfo && !isMobile}
+	{#if hoveredBookId !== null && hoverBookInfo && !isMobile}
 		<div
 			class="tooltipContainer"
 			class:position-left={tooltipPosition === 'left'}
@@ -414,7 +414,7 @@
 	{/if}
 </div>
 
-{#if hoveredBookId && hoverBookInfo && isMobile}
+{#if hoveredBookId !== null && hoverBookInfo && isMobile}
 	<div class="tooltipMobile" transition:scale={{ duration: 200 }}>
 		<img
 			src={hoverBookInfo.img}

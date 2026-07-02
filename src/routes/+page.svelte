@@ -3,7 +3,7 @@
 	import BooksList from '$lib/BooksList.svelte';
 	import Compare from '$lib/Compare.svelte';
 
-	import { fly, scale, slide } from 'svelte/transition';
+	import { fly, scale } from 'svelte/transition';
 	import { Confetti } from 'svelte-confetti';
 	import YearSummary from '$lib/YearSummary.svelte';
 	import { innerWidth } from 'svelte/reactivity/window';
@@ -102,9 +102,10 @@
 
 	$effect(() => {
 		if (error === 'Por favor, introduce un ID') {
-			setTimeout(() => {
+			const timeout = setTimeout(() => {
 				error = '';
 			}, 2000);
+			return () => clearTimeout(timeout);
 		}
 	});
 </script>
@@ -222,7 +223,7 @@
 <footer>
 	<p style="position: relative;bottom:0;text-align: center;padding-bottom: 1rem;">
 		Puedes ver el código completo de esta web en <a
-			href="https://github.com/adrimaqueda/goodreads-review"
+			href="https://github.com/adrimaqueda/goodreads-vs-me"
 			target="_blank">GitHub</a
 		>
 		• Desarrollado por <a href="https://adrimaqueda.com">Adrián Maqueda</a>

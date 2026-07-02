@@ -254,8 +254,11 @@
 				ontouchend={() => (selectedYear = year)}
 				onmouseover={() => (selectedYear = year)}
 				onmouseout={() => (selectedYear = null)}
+				onfocus={() => (selectedYear = year)}
+				onblur={() => (selectedYear = null)}
 				role="button"
 				tabindex="0"
+				aria-label="Datos del año {year.año}"
 			/>
 		{/each}
 	</div>
@@ -264,7 +267,7 @@
 		<div
 			class="tooltip"
 			style="position-anchor: --year-circle-{selectedYear.año};"
-			in:fly={{ y: scatterPlotHeight - yScale(selectedYear?.[yVar]) ?? 0, duration: 300 }}
+			in:fly={{ y: scatterPlotHeight - (yScale(selectedYear?.[yVar]) ?? 0), duration: 300 }}
 			out:fade={{ duration: 150 }}
 		>
 			<table>
