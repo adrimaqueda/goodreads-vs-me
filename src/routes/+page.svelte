@@ -1,9 +1,9 @@
 <script>
-	import { getCachedOrFetchData } from './scrape.remote';
+	import { getBookList, fetchMetadataBatch, cacheUserData } from './scrape.remote';
 	import BooksList from '$lib/BooksList.svelte';
 	import Compare from '$lib/Compare.svelte';
 
-	import { fly, scale, slide } from 'svelte/transition';
+	import { fly, scale } from 'svelte/transition';
 	import { Confetti } from 'svelte-confetti';
 	import YearSummary from '$lib/YearSummary.svelte';
 	import { innerWidth } from 'svelte/reactivity/window';
@@ -13,6 +13,15 @@
 	let error = $state('');
 	let data = $state(null);
 
+	// Progreso del scrapeo incremental de metadatos
+	let progress = $state(0);
+	let progressTotal = $state(0);
+
+	// Tamaño de cada lote de libros. Cada petición de metadatos se mantiene muy
+	// por debajo del tiempo límite de la función serverless (~5s), evitando que
+	// las librerías grandes hagan fallar la carga.
+	const BATCH_SIZE = 20;
+
 	async function handleSubmit() {
 		if (!goodreadsId) {
 			error = 'Por favor, introduce un ID';
@@ -21,21 +30,67 @@
 
 		loading = true;
 		error = '';
+		progress = 0;
+		progressTotal = 0;
+
+		const userId = goodreadsId.toString();
 
 		try {
-			const result = await getCachedOrFetchData(goodreadsId.toString());
+			// Paso 1: lista de libros (rápido). Puede venir ya completa desde caché.
+			const list = await getBookList(userId);
 
-			// Verificar si la respuesta indica error
-			if (!result.success) {
-				if (result.isPrivateShelf) {
+			if (!list.success) {
+				if (list.isPrivateShelf) {
 					error = '🔒 La librería de este usuario es privada. No puedo acceder a los libros.';
 				} else {
-					error = result.message || 'Error al obtener datos de Goodreads';
+					error = list.message || 'Error al obtener datos de Goodreads';
 				}
 				data = null;
-			} else {
-				data = result;
+				return;
 			}
+
+			if (list.complete) {
+				data = list;
+				return;
+			}
+
+			// Paso 2: scrapear metadatos por lotes, mostrando progreso.
+			const books = list.books;
+			const urls = [...new Set(books.filter((b) => b.url && b.rating !== 0).map((b) => b.url))];
+			progressTotal = urls.length;
+
+			const metaByUrl = new Map();
+			for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+				const slice = urls.slice(i, i + BATCH_SIZE);
+				try {
+					const batch = await fetchMetadataBatch(slice);
+					for (const meta of batch) metaByUrl.set(meta.url, meta);
+				} catch (err) {
+					// Un lote fallido no debe tirar toda la carga: seguimos con el resto.
+					console.warn('⚠️ Error en un lote de metadatos:', err);
+				}
+				progress = Math.min(progress + slice.length, progressTotal);
+			}
+
+			const enriched = books.map((b) => {
+				const meta = metaByUrl.get(b.url);
+				return meta ? { ...b, genres: meta.genres, numberOfPages: meta.numberOfPages } : b;
+			});
+
+			data = {
+				success: true,
+				books: enriched,
+				shelves: list.shelves,
+				lastUpdate: list.lastUpdate
+			};
+
+			// Paso 3: cachear el resultado completo para futuras cargas (sin bloquear).
+			cacheUserData({
+				userId,
+				books: enriched,
+				shelves: list.shelves,
+				lastUpdate: list.lastUpdate
+			}).catch(() => {});
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Error al obtener datos de Goodreads';
 			console.error('❌ Error:', err);
@@ -47,9 +102,10 @@
 
 	$effect(() => {
 		if (error === 'Por favor, introduce un ID') {
-			setTimeout(() => {
+			const timeout = setTimeout(() => {
 				error = '';
 			}, 2000);
+			return () => clearTimeout(timeout);
 		}
 	});
 </script>
@@ -102,11 +158,24 @@
 					Recopilando tus libros...<br />
 					<span style="color:#888;font-size:.85rem">(puede tomar un rato si tienes muchos)</span>
 				</p>
-				<div class="dots">
-					<span class="dot"></span>
-					<span class="dot"></span>
-					<span class="dot"></span>
-				</div>
+				{#if progressTotal > 0}
+					<div
+						class="progress"
+						role="progressbar"
+						aria-valuemin="0"
+						aria-valuemax={progressTotal}
+						aria-valuenow={progress}
+					>
+						<div class="progress-bar" style="width: {(progress / progressTotal) * 100}%"></div>
+					</div>
+					<p class="progress-label">{progress} / {progressTotal} libros analizados</p>
+				{:else}
+					<div class="dots">
+						<span class="dot"></span>
+						<span class="dot"></span>
+						<span class="dot"></span>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
@@ -122,6 +191,12 @@
 				📱<b>Desde el móvil</b>: puedes hacer los mismo que en el ordenador accediendo a Goodreads
 				desde el navegador. Otra opción es compartir tu perfil de Goodreads por Whatsapp, antes de
 				enviar el mensaje puedes ver el link que se genera.
+			</p>
+			<p>
+				✍️ <b>Si tienes perfil de autor</b>: el ID de autor no sirve, porque tu librería está ligada
+				a tu ID de usuario y Goodreads ya no lo enlaza desde el perfil de autor. Para encontrarlo,
+				entra en <i>My Books</i> y copia el número de la url:
+				<code>goodreads.com/review/list/[TU_ID]?ref=nav_mybooks</code>.
 			</p>
 		</details>
 
@@ -154,7 +229,7 @@
 <footer>
 	<p style="position: relative;bottom:0;text-align: center;padding-bottom: 1rem;">
 		Puedes ver el código completo de esta web en <a
-			href="https://github.com/adrimaqueda/goodreads-review"
+			href="https://github.com/adrimaqueda/goodreads-vs-me"
 			target="_blank">GitHub</a
 		>
 		• Desarrollado por <a href="https://adrimaqueda.com">Adrián Maqueda</a>
@@ -222,6 +297,29 @@
 		color: #333;
 		margin: 1rem 0 0.5rem 0;
 		font-weight: 500;
+	}
+
+	.progress {
+		width: 100%;
+		max-width: 260px;
+		height: 8px;
+		margin: 0.75rem auto 0;
+		background-color: #f0f0f0;
+		border-radius: 50px;
+		overflow: hidden;
+	}
+
+	.progress-bar {
+		height: 100%;
+		background-color: #ebc033;
+		border-radius: 50px;
+		transition: width 0.3s ease;
+	}
+
+	.progress-label {
+		margin-top: 0.5rem;
+		font-size: 0.85rem;
+		color: #888;
 	}
 
 	.dots {

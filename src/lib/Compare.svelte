@@ -84,8 +84,6 @@
 		return base.range([3, ratio]);
 	});
 
-	$inspect(radiusScale.range()[1]);
-
 	let maxGroupSize = $derived.by(() => {
 		let midR = radiusScale.range()[1] - (radiusScale.range()[1] - radiusScale.range()[0]) / 2;
 
@@ -348,7 +346,7 @@
 		{/each}
 	</CanvasWrapper>
 
-	{#if hoveredBookId && hoverBookInfo && !isMobile}
+	{#if hoveredBookId !== null && hoverBookInfo && !isMobile}
 		<div
 			class="tooltipContainer"
 			class:position-left={tooltipPosition === 'left'}
@@ -416,7 +414,7 @@
 	{/if}
 </div>
 
-{#if hoveredBookId && hoverBookInfo && isMobile}
+{#if hoveredBookId !== null && hoverBookInfo && isMobile}
 	<div class="tooltipMobile" transition:scale={{ duration: 200 }}>
 		<img
 			src={hoverBookInfo.img}

@@ -7,18 +7,21 @@ Puedes probarla en este enlace [goodreads-vs-me.vercel.app](goodreads-vs-me.verc
 ## 🎯 Características
 
 ### 📊 Análisis Comparativo
+
 - Compara tus puntuaciones con el promedio global de Goodreads
 - Visualiza la diferencia entre tu opinión y la comunidad
 - Identifica libros que puntuaste diferente al resto de usuarios
 - Gráfico interactivo con simulación de fuerzas para tener una referencia visual
 
 ### 📈 Visualización Avanzada de Datos
+
 - **Gráfico de dispersión interactivo**: Analiza la relación entre variables de lectura
 - **Selección dinámica de ejes**: Compara páginas por libro, puntuación media, total de páginas y años
 - **Tooltips con anchor-position**: Información detallada al pasar el cursor sobre los círculos
 - **Escala automática de datos**: Ajustes inteligentes según el tipo de variable
 
 ### 📖 Listado de libros
+
 - Visualiza todos tus libros en una galería moderna
 - Filtra por estanterías (Leyendo, Por leer, Leído...)
 - Filtra por puntuación (1-5 estrellas)
@@ -26,6 +29,7 @@ Puedes probarla en este enlace [goodreads-vs-me.vercel.app](goodreads-vs-me.verc
 - Etiquetas con puntuación y fecha de lectura
 
 ### 💡 Insights Inteligentes
+
 - Descubre cuáles son los libros que puntuaste de forma más conservadora
 - Identifica tus libros favoritos comparados con la media
 - Estadísticas generales de tu actividad de lectura

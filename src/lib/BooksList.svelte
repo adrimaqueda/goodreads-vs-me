@@ -48,6 +48,8 @@
 		abandoned: '#dc2626'
 	};
 
+	const readDateFormatter = new Intl.DateTimeFormat('es', { month: 'short', year: '2-digit' });
+
 	function isHighlighted(index: number): boolean {
 		// Si hay hover, prioriza el hover sobre el activo
 		if (hoveredStar !== null) return index <= hoveredStar;
@@ -75,7 +77,7 @@
 					</button>
 				{/if}
 			</div>
-			{#each shelves.sort((a, b) => descending(a.books, b.books)) as shelf}
+			{#each shelves.toSorted((a, b) => descending(a.books, b.books)) as shelf (shelf.name)}
 				{@const shelfColor = listColors[shelf.name]}
 				<button
 					onclick={() => (filterBooks = shelf.name)}
@@ -91,7 +93,7 @@
 		<div class="puntuacion">
 			<div class="header">Puntuación</div>
 			<div class="stars">
-				{#each { length: 5 } as _, i}
+				{#each { length: 5 } as _, i (i)}
 					<button
 						onmouseenter={() => (hoveredStar = i + 1)}
 						onmouseleave={() => (hoveredStar = null)}
@@ -129,6 +131,8 @@
 					src={book.img}
 					alt="Portada de {book.title} por {book.author}"
 					class="bookCover"
+					loading="lazy"
+					decoding="async"
 					style={shelfColor ? `--color:${shelfColor}` : ''}
 				/>
 				{#if book.shelves.includes('read') || book.shelves.includes('abandoned')}
@@ -154,9 +158,7 @@
 						{#if book['read at'] !== '' || book.shelves.includes('abandoned')}
 							{@const date = book['read at'] !== '' ? book['read at'] : book.isoDate}
 							<p class="bookInfo">
-								{new Intl.DateTimeFormat('es', { month: 'short', year: '2-digit' }).format(
-									new Date(date)
-								)}
+								{readDateFormatter.format(new Date(date))}
 								<br />
 								{#if book['read at'] !== ''}
 									{book.numberOfPages} págs.

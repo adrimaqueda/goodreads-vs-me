@@ -6,8 +6,12 @@
 
 	let { books } = $props();
 
+	// Sólo libros con puntuación: los leídos sin puntuar entraban en el
+	// recuento de "libros puntuados" y como ceros en la puntuación media.
+	let ratedBooks = $derived(books.filter((d) => d.rating !== 0));
+
 	let years = $derived(
-		groups(books, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
 			.map((d) => ({ year: +d[0], books: d[1] }))
 			.filter((d) => d.year !== 0)
 	);
@@ -40,7 +44,7 @@
 	// Scatterplot
 
 	let pagesRecount = $derived(
-		groups(books, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
 			.map((d) => ({
 				año: +d[0],
 				'libros puntuados': d[1].length,
@@ -254,8 +258,11 @@
 				ontouchend={() => (selectedYear = year)}
 				onmouseover={() => (selectedYear = year)}
 				onmouseout={() => (selectedYear = null)}
+				onfocus={() => (selectedYear = year)}
+				onblur={() => (selectedYear = null)}
 				role="button"
 				tabindex="0"
+				aria-label="Datos del año {year.año}"
 			/>
 		{/each}
 	</div>
@@ -264,7 +271,7 @@
 		<div
 			class="tooltip"
 			style="position-anchor: --year-circle-{selectedYear.año};"
-			in:fly={{ y: scatterPlotHeight - yScale(selectedYear?.[yVar]) ?? 0, duration: 300 }}
+			in:fly={{ y: scatterPlotHeight - (yScale(selectedYear?.[yVar]) ?? 0), duration: 300 }}
 			out:fade={{ duration: 150 }}
 		>
 			<table>
