@@ -9,6 +9,15 @@ class PrivateShelfError extends Error {
 	}
 }
 
+class InvalidUserError extends Error {
+	constructor(
+		message: string = 'No he encontrado ninguna librería con ese ID. Comprueba que sea correcto. Si tienes perfil de autor, tu ID de autor no sirve: entra en "My Books" y copia el número que aparece en la URL (goodreads.com/review/list/TU_ID).'
+	) {
+		super(message);
+		this.name = 'InvalidUserError';
+	}
+}
+
 interface GoodreadsRSSItem {
 	title?: string;
 	pubDate?: string;
@@ -79,7 +88,25 @@ async function fetchRssPage(userId: string, page: number, perPage: number) {
 		throw new PrivateShelfError();
 	}
 
-	return parser.parseString(xml);
+	// Un 404 significa que el ID no corresponde a ningún usuario: suele pasar al
+	// introducir un ID de perfil de autor, que no está ligado a la librería.
+	if (response.status === 404) {
+		throw new InvalidUserError();
+	}
+
+	if (!response.ok) {
+		throw new Error(
+			`Goodreads respondió con un error (HTTP ${response.status}). Inténtalo de nuevo en un rato.`
+		);
+	}
+
+	try {
+		return await parser.parseString(xml);
+	} catch {
+		// Respuesta 200 pero sin RSS válido: lo tratamos como ID no válido en vez
+		// de enseñar un error de parseo XML críptico.
+		throw new InvalidUserError();
+	}
 }
 
 // Construye un libro con los datos del RSS, sin los metadatos (géneros y número

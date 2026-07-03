@@ -192,6 +192,12 @@
 				desde el navegador. Otra opción es compartir tu perfil de Goodreads por Whatsapp, antes de
 				enviar el mensaje puedes ver el link que se genera.
 			</p>
+			<p>
+				✍️ <b>Si tienes perfil de autor</b>: el ID de autor no sirve, porque tu librería está ligada
+				a tu ID de usuario y Goodreads ya no lo enlaza desde el perfil de autor. Para encontrarlo,
+				entra en <i>My Books</i> y copia el número de la url:
+				<code>goodreads.com/review/list/[TU_ID]?ref=nav_mybooks</code>.
+			</p>
 		</details>
 
 		{#if innerWidth.current < 550}
