@@ -129,8 +129,10 @@
 		<h1>Goodreads vs Me</h1>
 
 		<form class="input-container" onsubmit={handleSubmit}>
+			<!-- name="id": si se envía antes de que cargue el JS, se llega a /?id=… igualmente -->
 			<input
 				type="text"
+				name="id"
 				bind:value={input}
 				placeholder="Tu ID o la URL de tu perfil (ej: 172594000)"
 				aria-label="ID o URL de tu perfil de Goodreads"
