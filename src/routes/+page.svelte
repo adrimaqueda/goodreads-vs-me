@@ -2,18 +2,23 @@
 	import { getBookList, fetchMetadataBatch } from './scrape.remote';
 	import BooksList from '$lib/BooksList.svelte';
 	import Compare from '$lib/Compare.svelte';
+	import YearSummary from '$lib/YearSummary.svelte';
+	import { parseUserId } from '$lib/books';
 
 	import { isHttpError } from '@sveltejs/kit';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 	import { fly, scale } from 'svelte/transition';
 	import { Confetti } from 'svelte-confetti';
-	import YearSummary from '$lib/YearSummary.svelte';
 	import { innerWidth } from 'svelte/reactivity/window';
 
-	let goodreadsId = $state('');
+	let input = $state('');
 	let loading = $state(false);
 	let error = $state('');
 	// $state.raw: la lista puede tener miles de libros y nunca se modifica.
 	let books = $state.raw(null);
+	let copied = $state(false);
 
 	// Progreso del scrapeo incremental de metadatos
 	let progress = $state(0);
@@ -24,12 +29,32 @@
 	// librerías grandes hagan fallar la carga.
 	const BATCH_SIZE = 20;
 
-	async function handleSubmit() {
-		if (!goodreadsId) {
-			error = 'Por favor, introduce un ID';
+	// Los enlaces con ?id=123 cargan esa librería directamente.
+	onMount(() => {
+		const userId = parseUserId(page.url.searchParams.get('id') ?? '');
+		if (userId) {
+			input = userId;
+			load(userId);
+		}
+	});
+
+	function handleSubmit(event) {
+		event.preventDefault();
+
+		const userId = parseUserId(input);
+		if (!userId) {
+			error =
+				'No encuentro ningún ID en lo que has escrito: pega tu número de usuario de Goodreads o la URL de tu perfil.';
 			return;
 		}
 
+		input = userId;
+		// La URL queda como enlace para volver a estos resultados o compartirlos.
+		replaceState(`?id=${userId}`, {});
+		load(userId);
+	}
+
+	async function load(userId) {
 		loading = true;
 		error = '';
 		progress = 0;
@@ -38,7 +63,7 @@
 		try {
 			// Paso 1: lista de libros (rápido), con los metadatos que ya tenga el
 			// servidor en caché y las URLs de los libros que faltan por analizar.
-			const { books: list, pending } = await getBookList(goodreadsId.toString());
+			const { books: list, pending } = await getBookList(userId);
 
 			// Paso 2: analizar por lotes los libros que faltan, mostrando progreso.
 			progressTotal = pending.length;
@@ -70,14 +95,15 @@
 		}
 	}
 
-	$effect(() => {
-		if (error === 'Por favor, introduce un ID') {
-			const timeout = setTimeout(() => {
-				error = '';
-			}, 2000);
-			return () => clearTimeout(timeout);
+	async function copyLink() {
+		try {
+			await navigator.clipboard.writeText(location.href);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Sin permiso para el portapapeles: el enlace sigue en la barra de direcciones.
 		}
-	});
+	}
 </script>
 
 {#if books === null}
@@ -102,18 +128,20 @@
 	<section id="id-input">
 		<h1>Goodreads vs Me</h1>
 
-		<div class="input-container">
+		<form class="input-container" onsubmit={handleSubmit}>
 			<input
-				type="number"
-				bind:value={goodreadsId}
-				placeholder="Introduce tu id de Goodreads (ej: 172594000)"
+				type="text"
+				bind:value={input}
+				placeholder="Tu ID o la URL de tu perfil (ej: 172594000)"
+				aria-label="ID o URL de tu perfil de Goodreads"
+				autocomplete="off"
+				required
 				disabled={loading}
-				onkeydown={(e) => e.key === 'Enter' && handleSubmit()}
 			/>
-			<button onclick={handleSubmit} disabled={loading}>
+			<button disabled={loading}>
 				{loading ? 'Cargando...' : 'Buscar'}
 			</button>
-		</div>
+		</form>
 
 		{#if loading}
 			<div class="loading-container" transition:scale={{ duration: 300 }}>
@@ -149,18 +177,23 @@
 			</div>
 		{/if}
 
+		{#if books && !loading}
+			<button class="share" onclick={copyLink}>
+				{copied ? '✅ Enlace copiado' : '🔗 Copiar enlace a estos resultados'}
+			</button>
+		{/if}
+
 		<details>
 			<summary>¿Cómo saber tu id?</summary>
 			<p>
-				💻 <b>Desde el ordenador</b>: ve a tu perfil de Goodreads y comprueba la url, te aparecerá
-				algo como
-				<code>goodreads.com/user/show/123456789-pepito-perez</code>, tu id es el número que aparece,
-				en este caso <code>123456789</code>.
+				💻 <b>Desde el ordenador</b>: ve a tu perfil de Goodreads y copia la url, que será algo como
+				<code>goodreads.com/user/show/123456789-pepito-perez</code>. Puedes pegarla tal cual o
+				escribir solo el número (<code>123456789</code>).
 			</p>
 			<p>
-				📱<b>Desde el móvil</b>: puedes hacer los mismo que en el ordenador accediendo a Goodreads
-				desde el navegador. Otra opción es compartir tu perfil de Goodreads por Whatsapp, antes de
-				enviar el mensaje puedes ver el link que se genera.
+				📱<b>Desde el móvil</b>: puedes hacer lo mismo que en el ordenador accediendo a Goodreads
+				desde el navegador. Otra opción es compartir tu perfil desde la app de Goodreads y pegar
+				aquí el enlace que se genera.
 			</p>
 			<p>
 				✍️ <b>Si tienes perfil de autor</b>: el ID de autor no sirve, porque tu librería está ligada
@@ -203,6 +236,15 @@
 </footer>
 
 <style>
+	.share {
+		margin-top: 1rem;
+		padding: 0;
+		background: none;
+		color: #409d69;
+		font-size: 0.95rem;
+		text-decoration: underline;
+	}
+
 	.loading-container {
 		margin-top: 2rem;
 		text-align: center;
