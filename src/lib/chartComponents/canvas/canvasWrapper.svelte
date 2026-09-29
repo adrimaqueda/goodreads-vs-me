@@ -1,96 +1,58 @@
 <script>
 	/**
 	 * @component
-	 * Canvas component to render a drawable canvas with optional zoom and transform capabilities.
+	 * Lienzo en el que dibujan las formas hijas (Circle, Rect, Text, Line).
 	 *
-	 * @prop {number} width - The width of the canvas.
-	 * @prop {number} height - The height of the canvas.
-	 * @prop {Object} transform - The transform object for zooming and panning. Default is zoomIdentity.
-	 * @prop {boolean} alpha - Indicates if the canvas should support transparency. Default is false.
-	 * @prop {boolean} hide - Indicates if the canvas should be hidden. Default is false.
-	 * @prop {Function} onmousemove - Callback function for mouse move events. Default is an empty function.
-	 * @prop {Function} onclick - Callback function for click events. Default is an empty function.
-	 * @prop {string} contextName - The context name for the canvas. Default is 'spiegel-canvas'.
-	 * @prop {Function} children - Function to render child components or snippets.
+	 * Cada forma registra su función de dibujo con `add`. El lienzo se pinta
+	 * dentro de un efecto, así que Svelte registra como dependencias todo lo que
+	 * leen esas funciones: cualquier cambio (posiciones, radios animados,
+	 * opacidad, formas que aparecen o desaparecen) lo repinta una vez, y en
+	 * reposo no se repinta nada. Las formas se pintan por capas (`z`, de menor
+	 * a mayor) y, dentro de cada capa, en el orden en que se añadieron.
 	 *
-	 * @css [--position=relative] - The position of the canvas.
-	 * @css [--pointer-events=all] - The pointer events of the canvas.
+	 * @prop {number} width - Ancho en píxeles CSS.
+	 * @prop {number} height - Alto en píxeles CSS.
 	 */
-
 	import { setContext } from 'svelte';
-
-	let { width, height, contextName = 'canvas', children } = $props();
+	import { SvelteSet } from 'svelte/reactivity';
 	import { devicePixelRatio } from 'svelte/reactivity/window';
 
-	const drawFunctions = [];
+	let { width, height, children } = $props();
+
+	// Al menos 2x para que se vea nítido también en pantallas normales.
 	const dpr = Math.max(2, devicePixelRatio.current || 1);
-
+	const shapes = new SvelteSet();
 	let canvas = $state();
-	let ctx = $state();
-	let frameId = $state();
-	let pendingInvalidation = $state(false);
 
-	function scaleCanvas(canvas, ctx, width, height) {
+	setContext('canvas', {
+		/** Registra una función de dibujo en la capa `z` y devuelve la que la quita. */
+		add(draw, z = 0) {
+			const shape = { draw, z };
+			shapes.add(shape);
+			return () => shapes.delete(shape);
+		}
+	});
+
+	$effect(() => {
 		canvas.width = width * dpr;
 		canvas.height = height * dpr;
-		canvas.style.width = width + 'px';
-		canvas.style.height = height + 'px';
+		canvas.style.width = `${width}px`;
+		canvas.style.height = `${height}px`;
+	});
 
-		ctx.scale(dpr, dpr);
-	}
-
-	function invalidate() {
-		if (pendingInvalidation) return;
-		pendingInvalidation = true;
-		frameId = requestAnimationFrame(update);
-	}
-
-	function update() {
-		if (!ctx) return;
-
+	$effect(() => {
+		const ctx = canvas.getContext('2d');
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.clearRect(0, 0, width, height);
 
-		drawFunctions.forEach((fn) => {
+		for (const { draw } of [...shapes].sort((a, b) => a.z - b.z)) {
 			ctx.save();
-			fn(ctx);
+			draw(ctx);
 			ctx.restore();
-		});
-
-		pendingInvalidation = false;
-	}
-
-	setContext(contextName, {
-		register(fn) {
-			drawFunctions.push(fn);
-		},
-		deregister(fn) {
-			drawFunctions.splice(drawFunctions.indexOf(fn), 1);
-		},
-		invalidate
-	});
-
-	$effect(() => {
-		ctx = canvas.getContext('2d');
-
-		return () => {
-			if (frameId) {
-				cancelAnimationFrame(frameId);
-			}
-		};
-	});
-
-	$effect(() => {
-		if (canvas && ctx) scaleCanvas(canvas, ctx, width, height);
+		}
 	});
 </script>
 
-<canvas bind:this={canvas} style="overflow:visible">
+<canvas bind:this={canvas}>
 	{@render children?.()}
 </canvas>
-
-<style>
-	canvas {
-		top: 0;
-		left: 0;
-	}
-</style>

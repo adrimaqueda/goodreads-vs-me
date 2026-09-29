@@ -1,34 +1,29 @@
 <script>
+	/**
+	 * @component
+	 * Texto para dibujar dentro de un CanvasWrapper.
+	 *
+	 * @prop {string | number} text - Texto.
+	 * @prop {number} x - Posición en el eje horizontal.
+	 * @prop {number} y - Posición (línea base) en el eje vertical.
+	 * @prop {string} size - Tamaño de letra (p. ej. '15px').
+	 * @prop {string} fill - Color.
+	 * @prop {CanvasTextAlign} textAlign - Alineación. Por defecto 'center'.
+	 * @prop {number} globalAlpha - Opacidad (0-1). Por defecto 1.
+	 */
 	import { getContext } from 'svelte';
 
-	let {
-		fill,
-		textAlign = 'center',
-		text,
-		x,
-		y,
-		size,
-		globalAlpha = 1,
-		contextName = 'canvas'
-	} = $props();
+	let { text, x, y, size, fill, textAlign = 'center', globalAlpha = 1 } = $props();
 
-	const { register, deregister, invalidate } = getContext(contextName);
+	const { add } = getContext('canvas');
 
-	function draw(ctx) {
-		ctx.font = `${size} sans-serif`;
-		ctx.fillStyle = fill;
-		ctx.textAlign = textAlign;
-		ctx.fillText(text, x, y);
-	}
-
-	$effect(() => {
-		register(draw);
-		invalidate();
-		return () => deregister(draw);
-	});
-
-	$effect(() => {
-		(x, y);
-		invalidate();
-	});
+	$effect(() =>
+		add((ctx) => {
+			ctx.font = `${size} sans-serif`;
+			ctx.fillStyle = fill;
+			ctx.textAlign = textAlign;
+			ctx.globalAlpha = globalAlpha;
+			ctx.fillText(text, x, y);
+		})
+	);
 </script>

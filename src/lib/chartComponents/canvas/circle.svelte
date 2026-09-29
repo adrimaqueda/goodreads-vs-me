@@ -1,57 +1,34 @@
 <script>
 	/**
 	 * @component
-	 * CanvasFeature component to draw a feature on a Canvas.svelte component with various styling options.
-	 * Use this component as children for Canvas.svelte
+	 * Círculo para dibujar dentro de un CanvasWrapper. Los cambios de radio se animan.
 	 *
-	 * @prop {string} path - The path data for the feature.
-	 * @prop {string} fill - The fill color for the feature.
-	 * @prop {string} stroke - The stroke color for the feature.
-	 * @prop {number} strokeWidth - The width of the stroke. Default is 1.
-	 * @prop {string} backgroundStroke - The background stroke color for the feature. Default is undefined.
-	 * @prop {number} backgroundStrokeWidth - The width of the background stroke. Default is 3.
-	 * @prop {string} foregroundStroke - The foreground stroke color for the feature. Default is undefined.
-	 * @prop {number} foregroundStrokeWidth - The width of the foreground stroke. Default is 1.
-	 * @prop {number} globalAlpha - The global alpha value for the feature. Default is 1.0.
-	 * @prop {boolean} showStroke - Indicates if the stroke should be shown. Default is false.
-	 * @prop {boolean} showFill - Indicates if the fill should be shown. Default is false.
-	 * @prop {CanvasPattern} pattern - The pattern to be used for filling the feature. Default is undefined.
-	 * @prop {string} contextName - The context name for the canvas. Default is 'spiegel-canvas'.
+	 * @prop {number} x - Centro en el eje horizontal.
+	 * @prop {number} y - Centro en el eje vertical.
+	 * @prop {number} r - Radio.
+	 * @prop {string} fill - Color de relleno.
+	 * @prop {number} globalAlpha - Opacidad (0-1). Por defecto 1.
 	 */
-
 	import { getContext } from 'svelte';
 	import { Tween } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
 
-	let { fill, x, y, r, globalAlpha = 1, contextName = 'canvas' } = $props();
+	let { x, y, r, fill, globalAlpha = 1 } = $props();
 
-	const { register, deregister, invalidate } = $derived(getContext(contextName));
+	// $derived sólo avisa cuando el radio cambia de verdad, así la animación no
+	// se reinicia en cada paso de la simulación de fuerzas.
+	const target = $derived(r);
+	const radius = Tween.of(() => target, { duration: 400, easing: cubicOut });
 
-	const tweenedR = new Tween(r, {
-		duration: 400,
-		easing: cubicOut
-	});
+	const { add } = getContext('canvas');
 
-	$effect(() => {
-		tweenedR.target = r;
-	});
-
-	function draw(ctx) {
-		ctx.fillStyle = fill;
-		ctx.globalAlpha = globalAlpha;
-		ctx.beginPath();
-		ctx.arc(x, y, tweenedR.current, 0, 2 * Math.PI, false);
-		ctx.fill();
-	}
-
-	$effect(() => {
-		register(draw);
-		invalidate();
-		return () => deregister(draw);
-	});
-
-	$effect(() => {
-		(x, y, r);
-		invalidate();
-	});
+	$effect(() =>
+		add((ctx) => {
+			ctx.fillStyle = fill;
+			ctx.globalAlpha = globalAlpha;
+			ctx.beginPath();
+			ctx.arc(x, y, radius.current, 0, 2 * Math.PI);
+			ctx.fill();
+		})
+	);
 </script>

@@ -303,6 +303,7 @@
 				stroke="#666"
 				lineWidth={1.5}
 				globalAlpha={0.5}
+				z={-1}
 			/>
 		{/if}
 
