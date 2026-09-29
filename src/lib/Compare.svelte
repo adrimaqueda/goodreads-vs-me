@@ -168,7 +168,7 @@
 </script>
 
 {#snippet stars(value: number)}
-	{#each { length: 5 } as _, i}
+	{#each { length: 5 } as _, i (i)}
 		<Star size="0.8lh" color={i < Math.round(value) ? '#ebc033' : '#f9eec7'} />
 	{/each}
 {/snippet}
@@ -247,7 +247,7 @@
 		aria-label="Gráfico de tus puntuaciones (arriba) frente a la media de Goodreads (abajo)"
 	>
 		<CanvasWrapper width={wrapperWidth} {height}>
-			{#each { length: 5 } as _, i}
+			{#each { length: 5 } as _, i (i)}
 				<Text text={i + 1} x={xScale(i + 1)} y={height - 1} size="15px" fill="#777" />
 				<Rect x={xScale(i + 1)} y={0} width={1} height={height - 15} fill="#aaa" />
 			{/each}
@@ -256,7 +256,7 @@
 				<Line {...connection} stroke="#666" lineWidth={1.5} globalAlpha={0.5} z={-1} />
 			{/if}
 
-			{#each ratingPositions as book}
+			{#each ratingPositions as book (book.id)}
 				<Circle
 					x={book.x ?? 0}
 					y={book.y ?? 0}
@@ -266,7 +266,7 @@
 				/>
 			{/each}
 
-			{#each averagePositions as book}
+			{#each averagePositions as book (book.id)}
 				<Circle
 					x={book.x ?? 0}
 					y={book.y ?? 0}

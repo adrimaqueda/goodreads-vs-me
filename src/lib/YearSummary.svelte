@@ -92,6 +92,10 @@
 	);
 	let rScale = $derived(scaleLinear().domain(domain(rVar)).rangeRound([10, 20]));
 
+	// Coloca el centro del círculo de cada año en su punto del gráfico.
+	const center = (stat: Stats) =>
+		`translate(${xScale(stat[xVar])}px, ${yScale(stat[yVar])}px) translate(-50%, -50%)`;
+
 	// Marcas de los ejes en formato español ("1,5", "12k"); los años, enteros y tal cual.
 	const siFormat = formatLocale({
 		decimal: ',',
@@ -247,8 +251,7 @@
 				<div
 					class="circle"
 					class:dimmed={selected && selected.año !== stat.año}
-					style:transform="translate(calc({xScale(stat[xVar])}px - 50%), calc({yScale(stat[yVar])}px
-					- 50%))"
+					style:transform={center(stat)}
 					style:anchor-name="--year-circle-{stat.año}"
 					style:width="{rScale(stat[rVar]) * 2}px"
 					style:height="{rScale(stat[rVar]) * 2}px"
