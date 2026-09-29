@@ -1,116 +1,112 @@
 <script>
-	import { getBookList, fetchMetadataBatch, cacheUserData } from './scrape.remote';
+	import { getBookList, fetchMetadataBatch } from './scrape.remote';
 	import BooksList from '$lib/BooksList.svelte';
 	import Compare from '$lib/Compare.svelte';
+	import YearSummary from '$lib/YearSummary.svelte';
+	import { parseUserId } from '$lib/books';
 
+	import { isHttpError } from '@sveltejs/kit';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 	import { fly, scale } from 'svelte/transition';
 	import { Confetti } from 'svelte-confetti';
-	import YearSummary from '$lib/YearSummary.svelte';
 	import { innerWidth } from 'svelte/reactivity/window';
 
-	let goodreadsId = $state('');
+	let input = $state('');
 	let loading = $state(false);
 	let error = $state('');
-	let data = $state(null);
+	// $state.raw: la lista puede tener miles de libros y nunca se modifica.
+	let books = $state.raw(null);
+	let copied = $state(false);
 
 	// Progreso del scrapeo incremental de metadatos
 	let progress = $state(0);
 	let progressTotal = $state(0);
 
 	// Tamaño de cada lote de libros. Cada petición de metadatos se mantiene muy
-	// por debajo del tiempo límite de la función serverless (~5s), evitando que
-	// las librerías grandes hagan fallar la carga.
+	// por debajo del tiempo límite de la función serverless, evitando que las
+	// librerías grandes hagan fallar la carga.
 	const BATCH_SIZE = 20;
 
-	async function handleSubmit() {
-		if (!goodreadsId) {
-			error = 'Por favor, introduce un ID';
+	// Los enlaces con ?id=123 cargan esa librería directamente.
+	onMount(() => {
+		const userId = parseUserId(page.url.searchParams.get('id') ?? '');
+		if (userId) {
+			input = userId;
+			load(userId);
+		}
+	});
+
+	function handleSubmit(event) {
+		event.preventDefault();
+
+		const userId = parseUserId(input);
+		if (!userId) {
+			error =
+				'No encuentro ningún ID en lo que has escrito: pega tu número de usuario de Goodreads o la URL de tu perfil.';
 			return;
 		}
 
+		input = userId;
+		// La URL queda como enlace para volver a estos resultados o compartirlos.
+		replaceState(`?id=${userId}`, {});
+		load(userId);
+	}
+
+	async function load(userId) {
 		loading = true;
 		error = '';
 		progress = 0;
 		progressTotal = 0;
 
-		const userId = goodreadsId.toString();
-
 		try {
-			// Paso 1: lista de libros (rápido). Puede venir ya completa desde caché.
-			const list = await getBookList(userId);
+			// Paso 1: lista de libros (rápido), con los metadatos que ya tenga el
+			// servidor en caché y las URLs de los libros que faltan por analizar.
+			const { books: list, pending } = await getBookList(userId);
 
-			if (!list.success) {
-				if (list.isPrivateShelf) {
-					error = '🔒 La librería de este usuario es privada. No puedo acceder a los libros.';
-				} else {
-					error = list.message || 'Error al obtener datos de Goodreads';
-				}
-				data = null;
-				return;
-			}
-
-			if (list.complete) {
-				data = list;
-				return;
-			}
-
-			// Paso 2: scrapear metadatos por lotes, mostrando progreso.
-			const books = list.books;
-			const urls = [...new Set(books.filter((b) => b.url && b.rating !== 0).map((b) => b.url))];
-			progressTotal = urls.length;
-
-			const metaByUrl = new Map();
-			for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-				const slice = urls.slice(i, i + BATCH_SIZE);
+			// Paso 2: analizar por lotes los libros que faltan, mostrando progreso.
+			progressTotal = pending.length;
+			const metadata = new Map();
+			for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+				const batch = pending.slice(i, i + BATCH_SIZE);
 				try {
-					const batch = await fetchMetadataBatch(slice);
-					for (const meta of batch) metaByUrl.set(meta.url, meta);
+					for (const meta of await fetchMetadataBatch(batch)) metadata.set(meta.url, meta);
 				} catch (err) {
 					// Un lote fallido no debe tirar toda la carga: seguimos con el resto.
 					console.warn('⚠️ Error en un lote de metadatos:', err);
 				}
-				progress = Math.min(progress + slice.length, progressTotal);
+				progress += batch.length;
 			}
 
-			const enriched = books.map((b) => {
-				const meta = metaByUrl.get(b.url);
-				return meta ? { ...b, genres: meta.genres, numberOfPages: meta.numberOfPages } : b;
-			});
-
-			data = {
-				success: true,
-				books: enriched,
-				shelves: list.shelves,
-				lastUpdate: list.lastUpdate
-			};
-
-			// Paso 3: cachear el resultado completo para futuras cargas (sin bloquear).
-			cacheUserData({
-				userId,
-				books: enriched,
-				shelves: list.shelves,
-				lastUpdate: list.lastUpdate
-			}).catch(() => {});
+			books = list.map((book) => ({ ...book, ...metadata.get(book.url) }));
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Error al obtener datos de Goodreads';
-			console.error('❌ Error:', err);
-			data = null;
+			// Los errores previstos (librería privada, ID inexistente...) llegan del
+			// servidor con un mensaje para el usuario.
+			if (isHttpError(err) && err.status !== 500) {
+				error = err.body.message;
+			} else {
+				error = 'Error al obtener datos de Goodreads';
+				console.error('❌ Error:', err);
+			}
+			books = null;
 		} finally {
 			loading = false;
 		}
 	}
 
-	$effect(() => {
-		if (error === 'Por favor, introduce un ID') {
-			const timeout = setTimeout(() => {
-				error = '';
-			}, 2000);
-			return () => clearTimeout(timeout);
+	async function copyLink() {
+		try {
+			await navigator.clipboard.writeText(location.href);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Sin permiso para el portapapeles: el enlace sigue en la barra de direcciones.
 		}
-	});
+	}
 </script>
 
-{#if data === null}
+{#if books === null}
 	<div
 		style="position: fixed;top: -50px;left: 0;height: 100vh;width: 100vw;display: flex;justify-content: center;overflow: hidden;pointer-events: none;z-index:-1"
 	>
@@ -132,18 +128,22 @@
 	<section id="id-input">
 		<h1>Goodreads vs Me</h1>
 
-		<div class="input-container">
+		<form class="input-container" onsubmit={handleSubmit}>
+			<!-- name="id": si se envía antes de que cargue el JS, se llega a /?id=… igualmente -->
 			<input
-				type="number"
-				bind:value={goodreadsId}
-				placeholder="Introduce tu id de Goodreads (ej: 172594000)"
+				type="text"
+				name="id"
+				bind:value={input}
+				placeholder="Tu ID o la URL de tu perfil (ej: 172594000)"
+				aria-label="ID o URL de tu perfil de Goodreads"
+				autocomplete="off"
+				required
 				disabled={loading}
-				onkeydown={(e) => e.key === 'Enter' && handleSubmit()}
 			/>
-			<button onclick={handleSubmit} disabled={loading}>
+			<button disabled={loading}>
 				{loading ? 'Cargando...' : 'Buscar'}
 			</button>
-		</div>
+		</form>
 
 		{#if loading}
 			<div class="loading-container" transition:scale={{ duration: 300 }}>
@@ -179,18 +179,23 @@
 			</div>
 		{/if}
 
+		{#if books && !loading}
+			<button class="share" onclick={copyLink}>
+				{copied ? '✅ Enlace copiado' : '🔗 Copiar enlace a estos resultados'}
+			</button>
+		{/if}
+
 		<details>
 			<summary>¿Cómo saber tu id?</summary>
 			<p>
-				💻 <b>Desde el ordenador</b>: ve a tu perfil de Goodreads y comprueba la url, te aparecerá
-				algo como
-				<code>goodreads.com/user/show/123456789-pepito-perez</code>, tu id es el número que aparece,
-				en este caso <code>123456789</code>.
+				💻 <b>Desde el ordenador</b>: ve a tu perfil de Goodreads y copia la url, que será algo como
+				<code>goodreads.com/user/show/123456789-pepito-perez</code>. Puedes pegarla tal cual o
+				escribir solo el número (<code>123456789</code>).
 			</p>
 			<p>
-				📱<b>Desde el móvil</b>: puedes hacer los mismo que en el ordenador accediendo a Goodreads
-				desde el navegador. Otra opción es compartir tu perfil de Goodreads por Whatsapp, antes de
-				enviar el mensaje puedes ver el link que se genera.
+				📱<b>Desde el móvil</b>: puedes hacer lo mismo que en el ordenador accediendo a Goodreads
+				desde el navegador. Otra opción es compartir tu perfil desde la app de Goodreads y pegar
+				aquí el enlace que se genera.
 			</p>
 			<p>
 				✍️ <b>Si tienes perfil de autor</b>: el ID de autor no sirve, porque tu librería está ligada
@@ -212,17 +217,13 @@
 		{/if}
 	</section>
 
-	{#if data && !loading}
-		{@const shelves = data.shelves.map((d) => ({
-			name: d,
-			books: data.books.filter((b) => b.shelves.includes(d)).length
-		}))}
+	{#if books && !loading}
 		<section transition:fly={{ y: 500 }}>
-			<Compare books={data.books} />
+			<Compare {books} />
 
-			<YearSummary books={data.books} />
+			<YearSummary {books} />
 
-			<BooksList books={data.books} {shelves} />
+			<BooksList {books} />
 		</section>
 	{/if}
 </main>
@@ -237,6 +238,15 @@
 </footer>
 
 <style>
+	.share {
+		margin-top: 1rem;
+		padding: 0;
+		background: none;
+		color: #409d69;
+		font-size: 0.95rem;
+		text-decoration: underline;
+	}
+
 	.loading-container {
 		margin-top: 2rem;
 		text-align: center;

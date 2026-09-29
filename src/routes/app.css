@@ -135,10 +135,6 @@ button {
 	transition: background-color 0.2s;
 }
 
-/*button:hover:not(:disabled) {
-	background-color: #409d69;
-}*/
-
 button:disabled {
 	background-color: #cccccc;
 	cursor: not-allowed;
@@ -150,17 +146,6 @@ button:disabled {
 	padding: 0.5rem;
 	background-color: #ffebee;
 	border-radius: 4px;
-}
-
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-	-webkit-appearance: none;
-	margin: 0;
-}
-
-input[type='number'] {
-	appearance: textfiled;
-	-moz-appearance: textfield;
 }
 
 .bookTitle {

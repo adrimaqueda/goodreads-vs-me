@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Generado por el script de la bitácora: no se formatea a mano
+bitacora.html

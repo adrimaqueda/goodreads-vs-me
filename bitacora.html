@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitácora de cambios · Goodreads vs Me</title>
+<style>
+  :root {
+    --fondo: #fbfbfa;
+    --texto: #1f1f1d;
+    --texto-suave: #5c5c57;
+    --linea: #e6e6e2;
+    --tarjeta: #ffffff;
+    --acento: #2f6f4f;
+    --codigo-fondo: #f1f1ee;
+    --codigo-texto: #3a3a36;
+    --feature: #2f6f4f;  --feature-bg: #e8f3ec;
+    --refactor: #2a5b8c; --refactor-bg: #e7eff7;
+    --fix: #8a5a12;      --fix-bg: #f7efe0;
+    --infra: #5a4a8a;    --infra-bg: #ece8f6;
+    --datos: #156b73;    --datos-bg: #e3f1f2;
+    --seguridad: #9a3434;--seguridad-bg: #f7e6e6;
+    --rendimiento: #6b5a12; --rendimiento-bg: #f4f1e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #16161a;
+      --texto: #ececea;
+      --texto-suave: #a0a09a;
+      --linea: #2c2c33;
+      --tarjeta: #1d1d22;
+      --acento: #6fb98f;
+      --codigo-fondo: #26262c;
+      --codigo-texto: #d4d4d0;
+      --feature: #8fd4ad; --feature-bg: #1c3329;
+      --refactor: #9cc2e6; --refactor-bg: #1a2a3a;
+      --fix: #e0b878;     --fix-bg: #33291a;
+      --infra: #b4a4e0;   --infra-bg: #272240;
+      --datos: #7fd0d6;   --datos-bg: #15333540;
+      --seguridad: #e09a9a; --seguridad-bg: #3a1f1f;
+      --rendimiento: #ddc878; --rendimiento-bg: #33301a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 17px;
+  }
+  .envoltorio { max-width: 720px; margin: 0 auto; padding: 56px 24px 96px; }
+  header.cabecera-doc { margin-bottom: 8px; }
+  header.cabecera-doc h1 {
+    font-size: 1.7rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  header.cabecera-doc .intro {
+    color: var(--texto-suave);
+    font-size: 0.98rem;
+    margin: 0;
+    max-width: 60ch;
+  }
+  .separador-doc { border: 0; border-top: 1px solid var(--linea); margin: 32px 0; }
+
+  article.entrada {
+    background: var(--tarjeta);
+    border: 1px solid var(--linea);
+    border-radius: 12px;
+    padding: 24px 26px;
+    margin-bottom: 22px;
+  }
+  .entrada-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .entrada time { color: var(--texto-suave); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .etiqueta {
+    display: inline-block;
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .etiqueta-feature { color: var(--feature); background: var(--feature-bg); }
+  .etiqueta-refactor { color: var(--refactor); background: var(--refactor-bg); }
+  .etiqueta-fix { color: var(--fix); background: var(--fix-bg); }
+  .etiqueta-infra { color: var(--infra); background: var(--infra-bg); }
+  .etiqueta-datos { color: var(--datos); background: var(--datos-bg); }
+  .etiqueta-seguridad { color: var(--seguridad); background: var(--seguridad-bg); }
+  .etiqueta-rendimiento { color: var(--rendimiento); background: var(--rendimiento-bg); }
+
+  article.entrada h2 {
+    font-size: 1.22rem;
+    font-weight: 640;
+    letter-spacing: -0.01em;
+    margin: 4px 0 10px;
+  }
+  .resumen {
+    font-size: 1.02rem;
+    color: var(--texto);
+    margin: 0 0 18px;
+    padding-left: 14px;
+    border-left: 3px solid var(--acento);
+  }
+  article.entrada section { margin: 16px 0; }
+  article.entrada section h3 {
+    font-size: 0.78rem;
+    font-weight: 680;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--texto-suave);
+    margin: 0 0 6px;
+  }
+  article.entrada section p { margin: 0 0 10px; }
+  article.entrada section p:last-child { margin-bottom: 0; }
+  .alternativas { margin: 0; padding: 0; list-style: none; }
+  .alternativas li {
+    margin: 0 0 10px;
+    padding-left: 16px;
+    position: relative;
+  }
+  .alternativas li:last-child { margin-bottom: 0; }
+  .alternativas li::before {
+    content: "↳";
+    position: absolute;
+    left: 0;
+    color: var(--texto-suave);
+  }
+  .alternativas .opcion { font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: var(--codigo-fondo);
+    color: var(--codigo-texto);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  details.archivos { margin-top: 18px; }
+  details.archivos summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--texto-suave);
+    font-weight: 600;
+  }
+  details.archivos ul { margin: 10px 0 0; padding-left: 4px; list-style: none; }
+  details.archivos li { margin: 4px 0; }
+  footer.pie-doc {
+    margin-top: 48px;
+    color: var(--texto-suave);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="envoltorio">
+    <header class="cabecera-doc">
+      <h1>Bitácora de cambios · Goodreads vs Me</h1>
+      <p class="intro">Este documento explica, en lenguaje sencillo, los cambios importantes del proyecto: qué se hizo, por qué se hizo así y qué alternativas se descartaron. Está pensado para que cualquiera pueda entenderlo, sin necesidad de conocimientos técnicos. Lo más reciente aparece arriba.</p>
+    </header>
+    <hr class="separador-doc">
+    <!-- NUEVA_ENTRADA_AQUI -->
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-feature">Nueva funcionalidad</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>Resultados con enlace propio y buscador que acepta la URL del perfil</h2>
+      <p class="resumen">Cada resultado tiene su propia dirección para volver a él o compartirlo, y basta con pegar la URL del perfil de Goodreads.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>Antes había que escribir el número de usuario a mano: la casilla solo admitía números, así que pegar la URL del perfil no hacía nada y no avisaba. Ahora se puede pegar la URL tal cual (o solo el número) y la web saca el número ella sola.</p>
+        <p>Al buscar, la dirección de la página pasa a ser del tipo goodreads-vs-me.vercel.app/?id=123456. Abrir esa dirección carga esos resultados directamente, así que sirve para guardarla, recargar sin perder nada o mandársela a alguien. Hay un botón «Copiar enlace a estos resultados».</p>
+        <p>De paso he arreglado la vista previa al compartir la web en redes: la dirección aparecía como un texto roto («%sveltekit.url%») y la imagen no llevaba la dirección completa, que es lo que exigen Facebook, LinkedIn o X. También he marcado la página como escrita en español; estaba como inglés, lo que confunde a los lectores de pantalla y a los buscadores.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>Guardar la búsqueda en la propia dirección es la forma más sencilla de que un resultado se pueda compartir: no hacen falta cuentas ni base de datos, y funciona con cualquier aplicación de mensajería. La dirección se actualiza sin recargar la página, así que la carga no se repite.</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Generar una imagen con los resultados para compartir:</span> Es mucho más trabajo y quien la recibe no puede explorar los datos; el enlace lleva a la página completa.</li>
+          <li><span class="opcion">Guardar los resultados en el servidor con un código corto:</span> Necesita almacenamiento permanente y volvería a abrir la puerta a que alguien guarde datos falsos; con el número de usuario, la web vuelve a leer los datos reales de Goodreads.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>Compartir «mis resultados» es copiar un enlace, buscar desde el móvil es más fácil (compartir el perfil desde la app de Goodreads y pegarlo) y las vistas previas en redes muestran bien la imagen.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>src/routes/+page.svelte</code></li>
+          <li><code>src/routes/+layout.svelte</code></li>
+          <li><code>src/app.html</code></li>
+          <li><code>src/lib/books.ts</code></li>
+          <li><code>static/site.webmanifest</code></li>
+        </ul>
+      </details>
+    </article>
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-refactor">Refactor</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>Componentes más cortos y sin código repetido</h2>
+      <p class="resumen">Elimino código duplicado en las tres secciones de la página sin cambiar lo que se ve.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>La sección de comparación tenía dos copias casi idénticas de la ficha de un libro (una para ordenador y otra para móvil) y el dibujo de la estrella pegado cuatro veces. El resumen por año agrupaba los libros por año dos veces y tenía dos bloques de estilos casi iguales para los desplegables. He creado piezas reutilizables (una estrella, una ficha de libro, un único agrupado por año) y una descripción común de lo que es un «libro» que usan todos los archivos, con nombres de campos normales.</p>
+        <p>También he quitado ficheros y estilos que no se usaban. En total el código tiene 413 líneas menos que antes, pese a las funciones nuevas.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>Cuando algo está repetido, un arreglo en una copia se olvida en la otra, y aquí ya había pasado: la ficha de móvil decía «Mi puntuación» y la de ordenador «Tu puntuación». Con una sola versión de cada cosa, cualquier cambio futuro se hace una vez.</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Rehacer los gráficos con otra librería de visualización:</span> Cambiaría el aspecto y el comportamiento de la web; el objetivo era simplificar sin que quien la visita note diferencias.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>La web se ve y funciona igual (lo comprobé con capturas antes y después y con un recorrido automático por todas las pantallas), pero cada sección es más corta y más fácil de modificar.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>src/lib/Compare.svelte</code></li>
+          <li><code>src/lib/YearSummary.svelte</code></li>
+          <li><code>src/lib/BooksList.svelte</code></li>
+          <li><code>src/lib/Star.svelte</code></li>
+          <li><code>src/lib/books.ts</code></li>
+        </ul>
+      </details>
+    </article>
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-fix">Corrección</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>Cifras corregidas: media de Goodreads, extensión media y años</h2>
+      <p class="resumen">Algunas cifras de la página estaban mal calculadas; ahora muestran el valor real.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>Había tres cálculos que daban resultados engañosos.</p>
+        <p>La «puntuación media en Goodreads» redondeaba la nota de cada libro antes de hacer la media (un 3,6 contaba como un 4). Con los datos de prueba mostraba 3,85 cuando la media real era 3,93. Ahora usa las notas tal cual.</p>
+        <p>La «extensión media de los libros» de cada año contaba como libros de 0 páginas los que no tenían ese dato. En uno de los años de prueba la media bajaba de 721 a 515 páginas. Ahora solo cuentan los libros cuyo número de páginas se conoce.</p>
+        <p>El selector de años salía desordenado (2021, 2022, 2025, 2020…). Ahora va en orden y empieza en el más reciente.</p>
+        <p>De paso, todos los números usan la coma decimal (antes convivían «3,02» y «3.55» en la misma pantalla), la lista de libros ya no pone «0 págs.» cuando no se sabe, y he corregido textos: tildes que faltaban y un «he leído» en una página que habla de tú. Si alguien no ha puntuado ningún libro, ve un mensaje en lugar de un gráfico roto.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>En una web cuyo propósito es comparar tu opinión con la media, las cifras son el producto. Redondear antes de promediar mete un sesgo que empuja casi todo hacia el 4, y contar como cero un dato que falta distorsiona todavía más. Comprobé cada cifra nueva recalculándola directamente sobre los datos de prueba.</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Mantener el redondeo para que la media encaje con el gráfico, que agrupa los libros por nota redondeada:</span> El gráfico necesita agrupar para dibujar columnas, pero la cifra se presenta como «la media de Goodreads» y tiene que ser la real.</li>
+          <li><span class="opcion">Pedir el número de páginas de todos los libros, también de los no puntuados:</span> Multiplicaría las peticiones a Goodreads (las listas de «por leer» pueden tener miles de libros) solo para completar un dato secundario.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>Las cifras que ve cada persona son correctas. Es normal que su media en Goodreads o la extensión media de algún año cambien un poco respecto a lo que veía antes.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>src/lib/Compare.svelte</code></li>
+          <li><code>src/lib/YearSummary.svelte</code></li>
+          <li><code>src/lib/BooksList.svelte</code></li>
+          <li><code>src/lib/books.ts</code></li>
+        </ul>
+      </details>
+    </article>
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-rendimiento">Rendimiento</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>El gráfico de círculos deja de redibujarse sin parar</h2>
+      <p class="resumen">El gráfico principal se repintaba 60 veces por segundo aunque no se moviera nada; ahora solo se repinta cuando algo cambia.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>El gráfico que compara tus notas con las de Goodreads se dibuja sobre un lienzo (un canvas, una zona de la página en la que se pinta a mano), y cada círculo es una pieza que le pide al lienzo que se repinte cuando cambia. Por un detalle de cómo estaba montado, cada repintado hacía que todos los círculos pidieran otro, en un bucle sin fin. Lo medí: 60 repintados por segundo y unas 5.500 operaciones internas por segundo con la página quieta, mientras estuviera abierta. Eso gasta procesador y batería sin que se note a simple vista.</p>
+        <p>He cambiado el mecanismo: el lienzo se pinta dentro de una única función que Svelte vuelve a ejecutar sola cuando cambia algo de lo que dibuja (una posición, un tamaño, una transparencia). Con la página quieta, cero repintados.</p>
+        <p>El bucle escondía otros dos fallos que salieron al arreglarlo: la animación que agranda un círculo al pasar el ratón y el cambio de transparencia no pedían repintado por sí mismos, y solo se veían gracias al bucle. Con el mecanismo nuevo funcionan sin código extra.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>Lo obvio era arreglar solo la variable que provocaba el bucle, pero así cada pieza del gráfico tendría que seguir llevando a mano una lista de «cosas de las que depende», y olvidar una es exactamente el tipo de error que ya había. Dejar que Svelte detecte qué usa cada dibujo elimina esas listas: menos código y un tipo de fallo que ya no se puede repetir.</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Corregir solo la variable que causaba el bucle:</span> Paraba el bucle, pero dejaba rotas las animaciones del ratón y mantenía las listas manuales, fáciles de volver a romper.</li>
+          <li><span class="opcion">Dibujar todos los círculos en una sola función en lugar de uno por pieza:</span> Sería algo más rápido con bibliotecas enormes, pero obligaba a reescribir a mano las animaciones; con los tamaños habituales no hacía falta.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>La página deja de consumir procesador y batería en segundo plano, la animación al pasar el ratón se ve completa y la línea que une las dos puntuaciones de un libro sigue quedando por debajo de los círculos, como antes.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>src/lib/chartComponents/canvas/canvasWrapper.svelte</code></li>
+          <li><code>src/lib/chartComponents/canvas/circle.svelte</code></li>
+          <li><code>src/lib/chartComponents/canvas/Line.svelte</code></li>
+          <li><code>src/lib/chartComponents/canvas/rect.svelte</code></li>
+          <li><code>src/lib/chartComponents/canvas/text.svelte</code></li>
+        </ul>
+      </details>
+    </article>
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-seguridad">Seguridad</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>El servidor solo consulta Goodreads y nadie puede falsear los datos de otra persona</h2>
+      <p class="resumen">Cierro dos agujeros del servidor y hago que los fallos puntuales de Goodreads dejen de quedarse guardados para siempre.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>La web tiene un pequeño servidor que lee Goodreads por nosotros. Tenía dos problemas de seguridad.</p>
+        <p>El primero: aceptaba cualquier dirección web que le mandara el navegador y la visitaba, así que cualquiera podía usarlo de intermediario para hacer peticiones a otros sitios. Ahora solo acepta fichas de libros de Goodreads, y como mucho 50 por petición.</p>
+        <p>El segundo: al terminar una carga, el navegador le mandaba al servidor el resultado para que lo guardara 24 horas, y el servidor se lo creía sin más. Cualquiera podía enviar datos inventados con el número de usuario de otra persona, y el servidor se los enseñaría a todo el que la buscara. He eliminado ese paso: el servidor solo guarda lo que ha descargado él mismo.</p>
+        <p>Además había un fallo silencioso: si Goodreads fallaba un momento al pedir la ficha de un libro, el servidor apuntaba «sin géneros, 0 páginas» y no volvía a intentarlo. Ahora los fallos no se guardan y se reintentan en la siguiente carga, y cada petición a Goodreads tiene un límite de 10 segundos para que una respuesta colgada no bloquee la carga.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>La regla de fondo es no fiarse de lo que llega del navegador, porque cualquiera puede modificarlo. Por eso el servidor reconstruye él mismo cada dirección a partir del número del libro, y su memoria solo se llena con datos que ha obtenido él. Para que la segunda visita siga siendo rápida guarda dos cosas por separado: la lista de libros de cada persona (una hora, para que los libros nuevos aparezcan pronto) y la ficha de cada libro (siete días y compartida entre usuarios, porque es lo lento de conseguir y casi nunca cambia).</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Mantener el guardado que enviaba el navegador, añadiendo alguna comprobación:</span> No hay forma fiable de verificar que esos datos son los reales sin volver a pedírselos a Goodreads, que es justo lo que se quería evitar.</li>
+          <li><span class="opcion">Guardar los resultados en una base de datos externa:</span> Sería un servicio más que mantener y pagar; para una web de este tamaño basta la memoria del servidor.</li>
+          <li><span class="opcion">Seguir con los dos lectores de HTML que había:</span> Hacían lo mismo. Comprobé con 520 libros y 297 fichas de prueba que el más ligero de los dos da exactamente los mismos resultados.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>Nadie puede usar la web para lanzar peticiones a otros sitios ni para mostrar datos falsos de otra persona. Los libros que fallaban por un error pasajero se completan solos al volver a cargar, y los libros recién añadidos en Goodreads aparecen en una hora en vez de en un día.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>src/routes/scrape.remote.ts</code></li>
+          <li><code>src/lib/server/goodreads.ts</code></li>
+          <li><code>src/lib/books.ts</code></li>
+          <li><code>src/routes/+page.svelte</code></li>
+        </ul>
+      </details>
+    </article>
+    <article class="entrada">
+      <div class="entrada-cabecera">
+        <span class="etiqueta etiqueta-infra">Infraestructura</span>
+        <time>2026-09-29</time>
+      </div>
+      <h2>Librerías al día y una comprobación automática de errores</h2>
+      <p class="resumen">Actualizo las librerías que tenían fallos de seguridad conocidos, quito dos que sobraban y añado un comando que detecta errores antes de publicar.</p>
+      <section>
+        <h3>Qué se hizo</h3>
+        <p>Las librerías de las que depende la web (SvelteKit, Svelte y el adaptador de Vercel, entre otras) tenían avisos de seguridad publicados: 14 en total, uno crítico y nueve graves. Algunos afectaban justo a la pieza que usa la web para hablar con su servidor. Las he subido a versiones corregidas y he fijado esas versiones como mínimo, para que una instalación nueva no pueda volver atrás.</p>
+        <p>He quitado dos librerías que no hacían nada: un adaptador de despliegue que no se usaba (la web usa el de Vercel) y un segundo lector de HTML que duplicaba al que ya había.</p>
+        <p>También he añadido el comando npm run check, que repasa el código buscando errores de tipos, es decir, usar un dato de una forma que no encaja (por ejemplo, un campo con un nombre que no existe). Sobre el código anterior daba 23 errores; ahora, ninguno.</p>
+      </section>
+      <section>
+        <h3>Por qué se hizo así</h3>
+        <p>Actualizar dentro de la misma versión principal corrige los fallos sin cambiar cómo funciona nada, y lo comprobé cargando la web antes y después con los mismos datos de prueba: los resultados eran idénticos. La comprobación de tipos es la herramienta estándar en proyectos SvelteKit y no añade nada a lo que descarga quien visita la web.</p>
+      </section>
+      <section>
+        <h3>Otras opciones que se descartaron</h3>
+        <ul class="alternativas">
+          <li><span class="opcion">Saltar a las siguientes versiones principales (Vite 8, etc.):</span> Traen cambios incompatibles que habría que revisar y no hacían falta para cerrar los avisos de seguridad.</li>
+          <li><span class="opcion">No añadir la comprobación de tipos:</span> En esta revisión se renombran datos en varios archivos; sin una comprobación automática, un nombre olvidado solo se descubriría con la web ya publicada.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Qué cambia</h3>
+        <p>La web deja de depender de versiones con fallos conocidos (quedan 4 avisos leves en una pieza interna de SvelteKit, sin arreglo publicado) y cualquiera que toque el código puede detectar errores con un solo comando.</p>
+      </section>
+      <details class="archivos">
+        <summary>Archivos afectados</summary>
+        <ul>
+          <li><code>package.json</code></li>
+          <li><code>package-lock.json</code></li>
+          <li><code>svelte.config.js</code></li>
+        </ul>
+      </details>
+    </article>
+    <footer class="pie-doc">Bitácora generada y mantenida automáticamente.</footer>
+  </div>
+</body>
+</html>
