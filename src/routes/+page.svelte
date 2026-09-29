@@ -1,8 +1,9 @@
 <script>
-	import { getBookList, fetchMetadataBatch, cacheUserData } from './scrape.remote';
+	import { getBookList, fetchMetadataBatch } from './scrape.remote';
 	import BooksList from '$lib/BooksList.svelte';
 	import Compare from '$lib/Compare.svelte';
 
+	import { isHttpError } from '@sveltejs/kit';
 	import { fly, scale } from 'svelte/transition';
 	import { Confetti } from 'svelte-confetti';
 	import YearSummary from '$lib/YearSummary.svelte';
@@ -11,15 +12,16 @@
 	let goodreadsId = $state('');
 	let loading = $state(false);
 	let error = $state('');
-	let data = $state(null);
+	// $state.raw: la lista puede tener miles de libros y nunca se modifica.
+	let books = $state.raw(null);
 
 	// Progreso del scrapeo incremental de metadatos
 	let progress = $state(0);
 	let progressTotal = $state(0);
 
 	// Tamaño de cada lote de libros. Cada petición de metadatos se mantiene muy
-	// por debajo del tiempo límite de la función serverless (~5s), evitando que
-	// las librerías grandes hagan fallar la carga.
+	// por debajo del tiempo límite de la función serverless, evitando que las
+	// librerías grandes hagan fallar la carga.
 	const BATCH_SIZE = 20;
 
 	async function handleSubmit() {
@@ -33,68 +35,36 @@
 		progress = 0;
 		progressTotal = 0;
 
-		const userId = goodreadsId.toString();
-
 		try {
-			// Paso 1: lista de libros (rápido). Puede venir ya completa desde caché.
-			const list = await getBookList(userId);
+			// Paso 1: lista de libros (rápido), con los metadatos que ya tenga el
+			// servidor en caché y las URLs de los libros que faltan por analizar.
+			const { books: list, pending } = await getBookList(goodreadsId.toString());
 
-			if (!list.success) {
-				if (list.isPrivateShelf) {
-					error = '🔒 La librería de este usuario es privada. No puedo acceder a los libros.';
-				} else {
-					error = list.message || 'Error al obtener datos de Goodreads';
-				}
-				data = null;
-				return;
-			}
-
-			if (list.complete) {
-				data = list;
-				return;
-			}
-
-			// Paso 2: scrapear metadatos por lotes, mostrando progreso.
-			const books = list.books;
-			const urls = [...new Set(books.filter((b) => b.url && b.rating !== 0).map((b) => b.url))];
-			progressTotal = urls.length;
-
-			const metaByUrl = new Map();
-			for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-				const slice = urls.slice(i, i + BATCH_SIZE);
+			// Paso 2: analizar por lotes los libros que faltan, mostrando progreso.
+			progressTotal = pending.length;
+			const metadata = new Map();
+			for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+				const batch = pending.slice(i, i + BATCH_SIZE);
 				try {
-					const batch = await fetchMetadataBatch(slice);
-					for (const meta of batch) metaByUrl.set(meta.url, meta);
+					for (const meta of await fetchMetadataBatch(batch)) metadata.set(meta.url, meta);
 				} catch (err) {
 					// Un lote fallido no debe tirar toda la carga: seguimos con el resto.
 					console.warn('⚠️ Error en un lote de metadatos:', err);
 				}
-				progress = Math.min(progress + slice.length, progressTotal);
+				progress += batch.length;
 			}
 
-			const enriched = books.map((b) => {
-				const meta = metaByUrl.get(b.url);
-				return meta ? { ...b, genres: meta.genres, numberOfPages: meta.numberOfPages } : b;
-			});
-
-			data = {
-				success: true,
-				books: enriched,
-				shelves: list.shelves,
-				lastUpdate: list.lastUpdate
-			};
-
-			// Paso 3: cachear el resultado completo para futuras cargas (sin bloquear).
-			cacheUserData({
-				userId,
-				books: enriched,
-				shelves: list.shelves,
-				lastUpdate: list.lastUpdate
-			}).catch(() => {});
+			books = list.map((book) => ({ ...book, ...metadata.get(book.url) }));
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Error al obtener datos de Goodreads';
-			console.error('❌ Error:', err);
-			data = null;
+			// Los errores previstos (librería privada, ID inexistente...) llegan del
+			// servidor con un mensaje para el usuario.
+			if (isHttpError(err) && err.status !== 500) {
+				error = err.body.message;
+			} else {
+				error = 'Error al obtener datos de Goodreads';
+				console.error('❌ Error:', err);
+			}
+			books = null;
 		} finally {
 			loading = false;
 		}
@@ -110,7 +80,7 @@
 	});
 </script>
 
-{#if data === null}
+{#if books === null}
 	<div
 		style="position: fixed;top: -50px;left: 0;height: 100vh;width: 100vw;display: flex;justify-content: center;overflow: hidden;pointer-events: none;z-index:-1"
 	>
@@ -212,17 +182,13 @@
 		{/if}
 	</section>
 
-	{#if data && !loading}
-		{@const shelves = data.shelves.map((d) => ({
-			name: d,
-			books: data.books.filter((b) => b.shelves.includes(d)).length
-		}))}
+	{#if books && !loading}
 		<section transition:fly={{ y: 500 }}>
-			<Compare books={data.books} />
+			<Compare {books} />
 
-			<YearSummary books={data.books} />
+			<YearSummary {books} />
 
-			<BooksList books={data.books} {shelves} />
+			<BooksList {books} />
 		</section>
 	{/if}
 </main>

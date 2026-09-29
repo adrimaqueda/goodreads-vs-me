@@ -20,26 +20,9 @@
 	} from 'd3';
 	import { innerWidth } from 'svelte/reactivity/window';
 	import { scale } from 'svelte/transition';
+	import type { Book } from '$lib/books';
 
-	interface Book {
-		id: number;
-		title: string;
-		author: string;
-		rating: number;
-		average: number;
-		numberOfPages: number;
-		'read at': string;
-		'book published': string;
-		'date added': Date | null;
-		shelves: string[];
-		genres: string[];
-		img: string;
-		url: string;
-		x: number;
-		y: number;
-	}
-
-	interface SimulationBook extends Book {}
+	type SimulationBook = Book & { x?: number; y?: number };
 
 	let { books }: { books: Book[] } = $props();
 
@@ -364,8 +347,8 @@
 					<p class="bookTitle">{hoverBookInfo.title}</p>
 					<p class="bookInfo">
 						{hoverBookInfo.author}
-						{#if hoverBookInfo['book published']}
-							({hoverBookInfo['book published']}){/if}
+						{#if hoverBookInfo.published}
+							({hoverBookInfo.published}){/if}
 						| {hoverBookInfo.numberOfPages} páginas
 					</p>
 					<table class="bookRating">
@@ -426,8 +409,8 @@
 			<p class="bookTitle">{hoverBookInfo.title}</p>
 			<p class="bookInfo">
 				{hoverBookInfo.author}
-				{#if hoverBookInfo['book published']}
-					({hoverBookInfo['book published']}){/if}
+				{#if hoverBookInfo.published}
+					({hoverBookInfo.published}){/if}
 				| {hoverBookInfo.numberOfPages} páginas
 			</p>
 			<table class="bookRating">

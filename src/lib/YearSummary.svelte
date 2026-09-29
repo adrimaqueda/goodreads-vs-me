@@ -11,7 +11,7 @@
 	let ratedBooks = $derived(books.filter((d) => d.rating !== 0));
 
 	let years = $derived(
-		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d.readAt.slice(0, 4))
 			.map((d) => ({ year: +d[0], books: d[1] }))
 			.filter((d) => d.year !== 0)
 	);
@@ -44,7 +44,7 @@
 	// Scatterplot
 
 	let pagesRecount = $derived(
-		groups(ratedBooks, (d) => d['read at'].slice(0, 4))
+		groups(ratedBooks, (d) => d.readAt.slice(0, 4))
 			.map((d) => ({
 				año: +d[0],
 				'libros puntuados': d[1].length,

@@ -25,7 +25,6 @@
 	},
 	"dependencies": {
 		"@vercel/analytics": "^1.6.1",
-		"linkedom": "^0.18.12",
 		"node-html-parser": "^7.0.2",
 		"rss-parser": "^3.13.0"
 	}

@@ -1,27 +1,21 @@
 <script lang="ts">
 	import { fly, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
-	import { descending } from 'd3';
+	import { descending, rollups } from 'd3';
+	import type { Book } from '$lib/books';
 
-	interface Book {
-		id: number;
-		title: string;
-		author: string;
-		img: string;
-		isoDate: string;
-		rating: number;
-		average: number;
-		numberOfPages: number;
-		'read at': string;
-		shelves: string[];
-	}
+	let { books }: { books: Book[] } = $props();
 
-	interface Shelf {
-		name: string;
-		books: number;
-	}
-
-	let { books, shelves }: { books: Book[]; shelves: Shelf[] } = $props();
+	// Estanterías con su número de libros, de más a menos.
+	let shelves = $derived(
+		rollups(
+			books.flatMap((book) => book.shelves),
+			(group) => group.length,
+			(shelf) => shelf
+		)
+			.map(([name, count]) => ({ name, books: count }))
+			.sort((a, b) => descending(a.books, b.books))
+	);
 
 	let filterBooks: string | null = $state(null);
 	let hoveredStar: number | null = $state(null);
@@ -77,7 +71,7 @@
 					</button>
 				{/if}
 			</div>
-			{#each shelves.toSorted((a, b) => descending(a.books, b.books)) as shelf (shelf.name)}
+			{#each shelves as shelf (shelf.name)}
 				{@const shelfColor = listColors[shelf.name]}
 				<button
 					onclick={() => (filterBooks = shelf.name)}
@@ -155,12 +149,12 @@
 								</svg>
 							</p>
 						{/if}
-						{#if book['read at'] !== '' || book.shelves.includes('abandoned')}
-							{@const date = book['read at'] !== '' ? book['read at'] : book.isoDate}
+						{#if book.readAt !== '' || book.shelves.includes('abandoned')}
+							{@const date = book.readAt !== '' ? book.readAt : book.addedAt}
 							<p class="bookInfo">
 								{readDateFormatter.format(new Date(date))}
 								<br />
-								{#if book['read at'] !== ''}
+								{#if book.readAt !== ''}
 									{book.numberOfPages} págs.
 								{/if}
 							</p>
