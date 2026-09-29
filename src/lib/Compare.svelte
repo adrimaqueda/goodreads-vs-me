@@ -4,6 +4,7 @@
 	import Rect from '$lib/chartComponents/canvas/rect.svelte';
 	import Text from '$lib/chartComponents/canvas/text.svelte';
 	import Line from '$lib/chartComponents/canvas/Line.svelte';
+	import Star from '$lib/Star.svelte';
 
 	import {
 		mean,
@@ -12,67 +13,61 @@
 		forceX,
 		forceY,
 		forceCollide,
-		greatest,
-		min,
+		extent,
 		max,
 		descending,
 		rollups
 	} from 'd3';
 	import { innerWidth } from 'svelte/reactivity/window';
 	import { scale } from 'svelte/transition';
-	import type { Book } from '$lib/books';
+	import { formatNumber, type Book } from '$lib/books';
 
-	type SimulationBook = Book & { x?: number; y?: number };
+	type Node = Book & { x?: number; y?: number };
 
 	let { books }: { books: Book[] } = $props();
 
-	let readBooks = $derived(books.filter((d) => d.rating !== 0));
+	let ratedBooks = $derived(books.filter((d) => d.rating !== 0));
+	let myMean = $derived(mean(ratedBooks, (d) => d.rating) ?? 0);
+	let goodreadsMean = $derived(mean(ratedBooks, (d) => d.average) ?? 0);
 
-	let means = $derived.by(() => {
-		return {
-			mines: mean(readBooks, (d) => d.rating),
-			global: mean(readBooks, (d) => Math.round(d.average))
-		};
-	});
+	// Los libros en los que más se aleja tu puntuación de la media de Goodreads.
+	let topDiffs = $derived(
+		ratedBooks
+			.map((d) => ({ ...d, diff: d.rating - d.average }))
+			.sort((a, b) => descending(Math.abs(a.diff), Math.abs(b.diff)))
+			.slice(0, 10)
+	);
+	let biggestDiff = $derived(topDiffs[0]);
+
+	// Gráfico: arriba tus puntuaciones y abajo las medias de Goodreads
+	// (redondeadas), cada libro es un círculo con un tamaño según sus páginas.
 
 	let wrapperWidth = $state(0);
 
-	let maxGroup = $derived.by(() => {
-		let ratings = rollups(
-			readBooks,
-			(v) => v.length,
-			(d) => Math.round(d.rating)
-		);
+	// Libros de la columna más poblada de cualquiera de las dos filas.
+	const largestColumn = (column: (d: Book) => number) =>
+		max(
+			rollups(ratedBooks, (v) => v.length, column),
+			(d) => d[1]
+		) ?? 0;
+	let maxGroup = $derived(
+		Math.max(
+			largestColumn((d) => d.rating),
+			largestColumn((d) => Math.round(d.average))
+		)
+	);
 
-		let averages = rollups(
-			readBooks,
-			(v) => v.length,
-			(d) => Math.round(d.average)
-		);
+	let radiusScale = $derived(
+		scaleLinear()
+			.domain(extent(ratedBooks, (d) => d.numberOfPages) as [number, number])
+			.range([3, Math.sqrt((wrapperWidth / maxGroup) * Math.PI) * Math.PI])
+	);
 
-		return Math.max(
-			max(ratings, (d) => d[1]),
-			max(averages, (d) => d[1])
-		);
-	});
-
-	let radiusScale = $derived.by(() => {
-		let ratio = Math.sqrt((wrapperWidth / maxGroup) * Math.PI) * Math.PI;
-
-		let base = scaleLinear().domain([
-			min(readBooks, (d) => d.numberOfPages),
-			max(readBooks, (d) => d.numberOfPages)
-		]);
-
-		return base.range([3, ratio]);
-	});
-
+	// Diámetro aproximado que ocupa la columna más poblada.
 	let maxGroupSize = $derived.by(() => {
-		let midR = radiusScale.range()[1] - (radiusScale.range()[1] - radiusScale.range()[0]) / 2;
-
-		const areaTotal = Math.sqrt((maxGroup * Math.PI * midR * midR) / 0.8 / Math.PI) * 2;
-
-		return areaTotal;
+		const [minRadius, maxRadius] = radiusScale.range();
+		const midRadius = (minRadius + maxRadius) / 2;
+		return Math.sqrt((maxGroup * midRadius * midRadius) / 0.8) * 2;
 	});
 
 	let height = $derived(maxGroupSize * 2.5);
@@ -83,409 +78,249 @@
 			.range([maxGroupSize / Math.PI, wrapperWidth - maxGroupSize / Math.PI])
 	);
 
-	let copiedDataRating = $derived(readBooks.map((d) => ({ ...d }) as SimulationBook));
-	let copiedDataAverage = $derived(readBooks.map((d) => ({ ...d }) as SimulationBook));
+	// Copias que mueve la simulación de fuerzas. Se crean una vez por lista, así
+	// al redimensionar cada círculo parte de donde estaba.
+	let ratingNodes = $derived(ratedBooks.map((d): Node => ({ ...d })));
+	let averageNodes = $derived(ratedBooks.map((d): Node => ({ ...d })));
+	let ratingPositions: Node[] = $state.raw([]);
+	let averagePositions: Node[] = $state.raw([]);
 
-	let nodesRating: SimulationBook[] = $state([]);
-	let nodesAverage: SimulationBook[] = $state([]);
+	// Agrupa los libros en la fila `y` alrededor de su puntuación redondeada,
+	// sin que se solapen, y publica sus posiciones en cada paso.
+	function swarm(
+		nodes: Node[],
+		field: 'rating' | 'average',
+		y: number,
+		onTick: (positions: Node[]) => void
+	) {
+		for (const d of nodes) {
+			d.x ??= xScale(d[field]);
+			d.y ??= y;
+		}
 
-	// Efecto para la simulación de rating con cleanup
+		const simulation = forceSimulation(nodes)
+			.force('x', forceX<Node>((d) => xScale(Math.round(d[field]))).strength(0.1))
+			.force('y', forceY<Node>(y).strength(0.1))
+			.force(
+				'collide',
+				forceCollide<Node>((d) => radiusScale(d.numberOfPages) * 1.2).iterations(10)
+			)
+			.alphaDecay(0.02)
+			.velocityDecay(0.3)
+			// Objetos nuevos en cada paso para que Svelte vea que han cambiado.
+			.on('tick', () => onTick(nodes.map((d) => ({ ...d }))));
+
+		return () => simulation.stop();
+	}
+
 	$effect(() => {
-		if (copiedDataRating?.length > 1 && wrapperWidth > 0) {
-			// Inicializar posiciones para rating
-			copiedDataRating.forEach((d) => {
-				if (d.x === undefined || d.y === undefined) {
-					d.x = xScale(d.rating);
-					d.y = (height / 4) * 0.85;
-				}
-			});
-
-			const sim = forceSimulation(copiedDataRating)
-				.force('x', forceX<SimulationBook>((d) => xScale(d.rating)).strength(0.1))
-				.force('y', forceY((height / 4) * 0.85).strength(0.1))
-				.force(
-					'collide',
-					forceCollide<SimulationBook>()
-						.radius((d) => radiusScale(d.numberOfPages) * 1.2)
-						.iterations(10)
-				)
-				.alpha(1)
-				.alphaDecay(0.02)
-				.velocityDecay(0.3);
-
-			sim.on('tick', () => {
-				nodesRating = sim.nodes();
-			});
-
-			return () => {
-				sim.stop();
-			};
+		if (wrapperWidth > 0) {
+			return swarm(ratingNodes, 'rating', height * 0.2125, (p) => (ratingPositions = p));
 		}
 	});
 
-	// Efecto para la simulación de average con cleanup
 	$effect(() => {
-		if (copiedDataAverage?.length > 1 && wrapperWidth > 0) {
-			// Inicializar posiciones para average rating
-			copiedDataAverage.forEach((d) => {
-				if (d.x === undefined || d.y === undefined) {
-					d.x = xScale(d.average);
-					d.y = (height * 2.75) / 4;
-				}
-			});
-
-			const sim = forceSimulation(copiedDataAverage)
-				.force('x', forceX<SimulationBook>((d) => xScale(Math.round(d.average))).strength(0.1))
-				.force('y', forceY((height * 2.75) / 4).strength(0.1))
-				.force(
-					'collide',
-					forceCollide<SimulationBook>()
-						.radius((d) => radiusScale(d.numberOfPages) * 1.2)
-						.iterations(10)
-				)
-				.alpha(1)
-				.alphaDecay(0.02)
-				.velocityDecay(0.3);
-
-			sim.on('tick', () => {
-				nodesAverage = sim.nodes();
-			});
-
-			return () => {
-				sim.stop();
-			};
+		if (wrapperWidth > 0) {
+			return swarm(averageNodes, 'average', height * 0.6875, (p) => (averagePositions = p));
 		}
 	});
 
-	let underVoted = $derived.by(() => {
-		return greatest(readBooks, (d) => d.average - d.rating);
-	});
-
-	let overVoted = $derived.by(() => {
-		return greatest(readBooks, (d) => d.rating - d.average);
-	});
-
-	let top10diff = $derived(
-		readBooks
-			.map((d) => ({ ...d, diff: d.average - d.rating }))
-			.toSorted((a, b) => descending(Math.abs(a.diff), Math.abs(b.diff)))
-			.slice(0, 10)
-	);
-
-	// Estado para hover interaction
-	let hoveredBookId: number | null = $state(null);
-	let hoveredBookX: number = $state(0);
-	let hoveredBookY: number = $state(0);
+	// Libro bajo el cursor
+	let hoveredId: number | null = $state(null);
+	let hoveredX = $state(0);
+	let hoveredY = $state(0);
+	let hovered = $derived(ratedBooks.find((d) => d.id === hoveredId));
 
 	function handleMouseMove(event: MouseEvent) {
-		const target = event.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const mouseX = event.clientX - rect.left;
-		const mouseY = event.clientY - rect.top;
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+		const node = [...ratingPositions, ...averagePositions].find(
+			(d) => Math.hypot((d.x ?? 0) - x, (d.y ?? 0) - y) <= radiusScale(d.numberOfPages)
+		);
 
-		// Buscar en ambos grupos de nodos
-		const allNodes = [...nodesRating, ...nodesAverage];
-		const hoveredNode = allNodes.find((node) => {
-			const dx = (node.x ?? 0) - mouseX;
-			const dy = (node.y ?? 0) - mouseY;
-			return Math.sqrt(dx * dx + dy * dy) <= radiusScale(node.numberOfPages);
-		});
-
-		hoveredBookId = hoveredNode?.id ?? null;
-		hoveredBookX = hoveredNode?.x ?? 0;
-		hoveredBookY = hoveredNode?.y ?? 0;
+		hoveredId = node?.id ?? null;
+		hoveredX = node?.x ?? 0;
+		hoveredY = node?.y ?? 0;
 	}
 
-	function handleMouseLeave() {
-		hoveredBookId = null;
-	}
-
-	function getRadius(book: { id: string | number; numberOfPages: number }): number {
-		let radius = radiusScale(book.numberOfPages);
-
-		if (hoveredBookId === null) return radius;
-		return book.id === hoveredBookId ? radius * 1.5 : radius / 2;
-	}
-
-	function getAlpha(bookId: number): number {
-		if (hoveredBookId === null) return 1;
-		return bookId === hoveredBookId ? 1 : 0.2;
-	}
-
-	let hoverBookInfo = $derived.by(() => {
-		if (hoveredBookId === null) return;
-		else return books.find((d) => d.id === hoveredBookId);
+	// Línea que une tu puntuación con la media del libro bajo el cursor.
+	let connection = $derived.by(() => {
+		const rating = ratingPositions.find((d) => d.id === hoveredId);
+		const average = averagePositions.find((d) => d.id === hoveredId);
+		if (!rating || !average) return null;
+		return { x1: rating.x ?? 0, y1: rating.y ?? 0, x2: average.x ?? 0, y2: average.y ?? 0 };
 	});
 
-	let connectionPoints = $derived.by(() => {
-		if (hoveredBookId === null) return null;
+	function getRadius(book: Node) {
+		const radius = radiusScale(book.numberOfPages);
+		if (hoveredId === null) return radius;
+		return book.id === hoveredId ? radius * 1.5 : radius / 2;
+	}
 
-		const ratingNode = nodesRating.find((n) => n.id === hoveredBookId);
-		const averageNode = nodesAverage.find((n) => n.id === hoveredBookId);
+	function getAlpha(book: Node) {
+		return hoveredId === null || book.id === hoveredId ? 1 : 0.2;
+	}
 
-		if (!ratingNode || !averageNode) return null;
-
-		return {
-			x1: ratingNode.x ?? 0,
-			y1: ratingNode.y ?? 0,
-			x2: averageNode.x ?? 0,
-			y2: averageNode.y ?? 0
-		};
-	});
-
-	// Determinar si el tooltip debe ir a la izquierda o derecha según la posición X del punto
-	let tooltipPosition = $derived.by(() => {
-		if (hoveredBookId === null) return 'center';
-		// Si está en la mitad izquierda, tooltip a la derecha, y viceversa
-		return hoveredBookX < wrapperWidth / 2 ? 'right' : 'left';
-	});
-
-	let isMobile = $derived(innerWidth.current < 768);
+	// Tooltip al lado contrario del punto para que no se salga del gráfico.
+	let tooltipSide = $derived(hoveredX < wrapperWidth / 2 ? 'right' : 'left');
+	let isMobile = $derived((innerWidth.current ?? Infinity) < 768);
 </script>
 
-<div class="text-container section-margin">
-	<p class="text-center">
-		Has puntuado <b>{readBooks.length}</b> libros en Goodreads.
-	</p>
-	<div class="means-container">
-		<div>
-			<p class="bigNumber" style="color: #ebc033">
-				{means.mines?.toLocaleString('es-ES', { maximumSignificantDigits: 3 }) ?? '-'}
-			</p>
-			<p class="means-label">Tu puntuacion media</p>
-		</div>
-		<div>
-			<p class="bigNumber" style="color:#666">
-				{means.global?.toLocaleString('es-ES', { maximumSignificantDigits: 3 }) ?? '-'}
-			</p>
-			<p class="means-label">La puntuacion media en Goodreads</p>
-		</div>
+{#snippet stars(value: number)}
+	{#each { length: 5 } as _, i}
+		<Star size="0.8lh" color={i < Math.round(value) ? '#ebc033' : '#f9eec7'} />
+	{/each}
+{/snippet}
+
+{#snippet bookDetails(book: Book)}
+	<img src={book.img} alt="Portada de {book.title} por {book.author}" class="bookCover" />
+
+	<div>
+		<p class="bookTitle">{book.title}</p>
+		<p class="bookInfo">
+			{book.author}
+			{#if book.published}({book.published}){/if}
+			{#if book.numberOfPages}| {book.numberOfPages} páginas{/if}
+		</p>
+		<table class="bookRating">
+			<tbody>
+				<tr>
+					<td>Tu puntuación:</td>
+					<td>{book.rating}</td>
+					<td>{@render stars(book.rating)}</td>
+				</tr>
+				<tr>
+					<td>Media en Goodreads:</td>
+					<td>{formatNumber(book.average)}</td>
+					<td>{@render stars(book.average)}</td>
+				</tr>
+			</tbody>
+		</table>
 	</div>
-	{#if underVoted && overVoted}
-		{#if Math.abs(underVoted.average - underVoted.rating) >= Math.abs(overVoted.rating - overVoted.average)}
-			<p>
-				La mayor diferencia entre tu puntuacion y la media de Goodreads es de <b
-					>{Math.round((underVoted.average - underVoted.rating) * 100) / 100} puntos</b
-				>, cuando puntuaste con un {underVoted.rating} el libro <i>{underVoted.title}</i> de {underVoted.author},
-				que en Goodreads promedia un {underVoted.average}.
-			</p>
-		{:else}
-			<p>
-				La mayor diferencia entre tu puntuacion y la media de Goodreads es de <b
-					>{Math.round((overVoted.rating - overVoted.average) * 100) / 100} puntos</b
-				>, en el libro <i>{overVoted.title}</i> de {overVoted.author}. Mientras que para ti fue un {overVoted.rating},
-				para el resto se queda en un {overVoted.average}.
-			</p>
-		{/if}
-	{/if}
-</div>
+{/snippet}
 
-<div
-	class="canvas-container"
-	bind:clientWidth={wrapperWidth}
-	onmousemove={handleMouseMove}
-	onmouseleave={handleMouseLeave}
-	role="application"
-	style="margin-bottom: 2rem;"
->
-	<CanvasWrapper width={wrapperWidth} {height}>
-		{#each { length: 5 } as _, i}
-			<Text text={i + 1} x={xScale(i + 1)} y={height - 1} size="15px" fill="#777" />
-			<Rect x={xScale(i + 1)} y={0} width={1} height={height - 15} fill="#aaa" />
-		{/each}
-
-		{#if connectionPoints}
-			<Line
-				x1={connectionPoints.x1}
-				y1={connectionPoints.y1}
-				x2={connectionPoints.x2}
-				y2={connectionPoints.y2}
-				stroke="#666"
-				lineWidth={1.5}
-				globalAlpha={0.5}
-				z={-1}
-			/>
-		{/if}
-
-		<!-- Primera simulacion: por rating -->
-		{#each nodesRating as book}
-			<Circle
-				x={book.x ?? 0}
-				y={book.y ?? 0}
-				r={getRadius(book)}
-				fill="#ebc033"
-				globalAlpha={getAlpha(book.id)}
-			/>
-		{/each}
-
-		<!-- Segunda simulacion: por average rating -->
-		{#each nodesAverage as book}
-			<Circle
-				x={book.x ?? 0}
-				y={book.y ?? 0}
-				r={getRadius(book)}
-				fill="#888"
-				globalAlpha={getAlpha(book.id)}
-			/>
-		{/each}
-	</CanvasWrapper>
-
-	{#if hoveredBookId !== null && hoverBookInfo && !isMobile}
-		<div
-			class="tooltipContainer"
-			class:position-left={tooltipPosition === 'left'}
-			class:position-right={tooltipPosition === 'right'}
-			style="left: {hoveredBookX}px; top: {hoveredBookY}px;"
-		>
-			<div transition:scale={{ duration: 200 }} class="tooltip">
-				<img
-					src={hoverBookInfo.img}
-					alt="Portada de {hoverBookInfo.title} por {hoverBookInfo.author}"
-					class="bookCover"
-				/>
-
-				<div>
-					<p class="bookTitle">{hoverBookInfo.title}</p>
-					<p class="bookInfo">
-						{hoverBookInfo.author}
-						{#if hoverBookInfo.published}
-							({hoverBookInfo.published}){/if}
-						| {hoverBookInfo.numberOfPages} páginas
-					</p>
-					<table class="bookRating">
-						<tbody>
-							<tr>
-								<td>Tu puntuación:</td>
-								<td>{hoverBookInfo.rating}</td>
-								<td>
-									{#each { length: 5 } as _, i}
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 576 512"
-											aria-hidden="true"
-											fill={i < hoverBookInfo.rating ? '#ebc033' : '#f9eec7'}
-										>
-											<path
-												d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z"
-											/>
-										</svg>
-									{/each}</td
-								>
-							</tr>
-							<tr>
-								<td style="white-space: nowrap;">Media en Goodreads:</td>
-								<td>{hoverBookInfo.average}</td>
-								<td style="display: flex;">
-									{#each { length: 5 } as _, i}
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 576 512"
-											aria-hidden="true"
-											fill={i < Math.round(hoverBookInfo.average) ? '#ebc033' : '#f9eec7'}
-										>
-											<path
-												d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z"
-											/>
-										</svg>
-									{/each}
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
+{#if ratedBooks.length === 0}
+	<div class="text-container section-margin">
+		<p class="text-center">
+			Todavía no has puntuado ningún libro en Goodreads, así que no hay puntuaciones que comparar.
+		</p>
+	</div>
+{:else}
+	<div class="text-container section-margin">
+		<p class="text-center">
+			Has puntuado <b>{ratedBooks.length}</b>
+			{ratedBooks.length === 1 ? 'libro' : 'libros'} en Goodreads.
+		</p>
+		<div class="means-container">
+			<div>
+				<p class="bigNumber" style="color: #ebc033">{formatNumber(myMean)}</p>
+				<p class="means-label">Tu puntuación media</p>
+			</div>
+			<div>
+				<p class="bigNumber" style="color:#666">{formatNumber(goodreadsMean)}</p>
+				<p class="means-label">La puntuación media en Goodreads</p>
 			</div>
 		</div>
-	{/if}
-</div>
-
-{#if hoveredBookId !== null && hoverBookInfo && isMobile}
-	<div class="tooltipMobile" transition:scale={{ duration: 200 }}>
-		<img
-			src={hoverBookInfo.img}
-			alt="Portada de {hoverBookInfo.title} por {hoverBookInfo.author}"
-			class="bookCover"
-		/>
-
-		<div>
-			<p class="bookTitle">{hoverBookInfo.title}</p>
-			<p class="bookInfo">
-				{hoverBookInfo.author}
-				{#if hoverBookInfo.published}
-					({hoverBookInfo.published}){/if}
-				| {hoverBookInfo.numberOfPages} páginas
+		{#if biggestDiff}
+			<p>
+				La mayor diferencia entre tu puntuación y la media de Goodreads es de <b
+					>{formatNumber(Math.abs(biggestDiff.diff))} puntos</b
+				>,
+				{#if biggestDiff.diff < 0}
+					cuando puntuaste con un {biggestDiff.rating} el libro <i>{biggestDiff.title}</i> de {biggestDiff.author},
+					que en Goodreads promedia un {formatNumber(biggestDiff.average)}.
+				{:else}
+					en el libro <i>{biggestDiff.title}</i> de {biggestDiff.author}. Mientras que para ti fue
+					un {biggestDiff.rating}, para el resto se queda en un {formatNumber(biggestDiff.average)}.
+				{/if}
 			</p>
-			<table class="bookRating">
-				<tbody>
+		{/if}
+	</div>
+
+	<div
+		class="canvas-container"
+		bind:clientWidth={wrapperWidth}
+		onmousemove={handleMouseMove}
+		onmouseleave={() => (hoveredId = null)}
+		role="img"
+		aria-label="Gráfico de tus puntuaciones (arriba) frente a la media de Goodreads (abajo)"
+	>
+		<CanvasWrapper width={wrapperWidth} {height}>
+			{#each { length: 5 } as _, i}
+				<Text text={i + 1} x={xScale(i + 1)} y={height - 1} size="15px" fill="#777" />
+				<Rect x={xScale(i + 1)} y={0} width={1} height={height - 15} fill="#aaa" />
+			{/each}
+
+			{#if connection}
+				<Line {...connection} stroke="#666" lineWidth={1.5} globalAlpha={0.5} z={-1} />
+			{/if}
+
+			{#each ratingPositions as book}
+				<Circle
+					x={book.x ?? 0}
+					y={book.y ?? 0}
+					r={getRadius(book)}
+					fill="#ebc033"
+					globalAlpha={getAlpha(book)}
+				/>
+			{/each}
+
+			{#each averagePositions as book}
+				<Circle
+					x={book.x ?? 0}
+					y={book.y ?? 0}
+					r={getRadius(book)}
+					fill="#888"
+					globalAlpha={getAlpha(book)}
+				/>
+			{/each}
+		</CanvasWrapper>
+
+		{#if hovered && !isMobile}
+			<div
+				class="tooltipContainer position-{tooltipSide}"
+				style="left: {hoveredX}px; top: {hoveredY}px;"
+			>
+				<div transition:scale={{ duration: 200 }} class="tooltip">
+					{@render bookDetails(hovered)}
+				</div>
+			</div>
+		{/if}
+	</div>
+
+	{#if hovered && isMobile}
+		<div class="tooltipMobile" transition:scale={{ duration: 200 }}>
+			{@render bookDetails(hovered)}
+		</div>
+	{/if}
+
+	<div class="section-margin">
+		<table id="top-diffs">
+			<thead>
+				<tr>
+					<th scope="col">Libro</th>
+					<th scope="col">Tu puntuación</th>
+					<th scope="col">Media en GR</th>
+					<th scope="col">Diferencia</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each topDiffs as book (book.id)}
 					<tr>
-						<td>Mi puntuación:</td>
-						<td>{hoverBookInfo.rating}</td>
+						<td class="bookTitle">{book.title}</td>
+						<td>{book.rating}</td>
+						<td>{formatNumber(book.average)}</td>
 						<td>
-							{#each { length: 5 } as _, i}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 576 512"
-									aria-hidden="true"
-									fill={i < hoverBookInfo.rating ? '#ebc033' : '#f9eec7'}
-								>
-									<path
-										d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z"
-									/>
-								</svg>
-							{/each}</td
-						>
-					</tr>
-					<tr>
-						<td style="white-space: nowrap;">Media en Goodreads:</td>
-						<td>{hoverBookInfo.average}</td>
-						<td style="display: flex;">
-							{#each { length: 5 } as _, i}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 576 512"
-									aria-hidden="true"
-									fill={i < Math.round(hoverBookInfo.average) ? '#ebc033' : '#f9eec7'}
-								>
-									<path
-										d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z"
-									/>
-								</svg>
-							{/each}
+							<span class="arrow" class:up={book.diff > 0}>{book.diff > 0 ? '▲' : '▼'}</span
+							>{formatNumber(Math.abs(book.diff))}
 						</td>
 					</tr>
-				</tbody>
-			</table>
-		</div>
+				{/each}
+			</tbody>
+		</table>
 	</div>
 {/if}
-
-<div class="section-margin">
-	<table border="1" frame="void" rules="rows" id="top-diffs">
-		<thead>
-			<tr>
-				<td>Libro</td>
-				<td>Tu puntuación</td>
-				<td>Media en GR</td>
-				<td>Diferencia</td>
-			</tr>
-		</thead>
-		<tbody>
-			{#each top10diff as book}
-				<tr>
-					<td class="bookTitle">{book.title}</td>
-					<td>{book.rating}</td>
-					<td>{book.average}</td>
-					<td>
-						<span
-							style="transform: scale(66%);display: inline-block;color:{book.rating > book.average
-								? '#409d69'
-								: '#c60000'}">{book.rating > book.average ? '▲' : '▼'}</span
-						>{Math.abs(Math.round(book.diff * 100) / 100)}
-					</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
-</div>
 
 <style>
 	.text-center {
@@ -509,6 +344,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		margin-bottom: 2rem;
 	}
 
 	.tooltipContainer {
@@ -576,9 +412,8 @@
 		font-size: 0.9rem;
 	}
 
-	.bookRating td svg {
-		height: 0.8lh;
-		aspect-ratio: 1;
+	.bookRating td {
+		white-space: nowrap;
 	}
 
 	.bookCover {
@@ -610,19 +445,31 @@
 		}
 
 		& thead {
-			font-weight: bold;
 			border-bottom: solid 2px black;
 		}
 
+		& th,
 		& td {
 			padding: 0.5em 0;
-			&:not(:first-of-type) {
-				text-align: center;
-			}
-			&.bookTitle {
+			text-align: center;
+
+			&:first-child {
 				text-align: left;
-				font-size: 1rem;
 			}
+		}
+
+		& .bookTitle {
+			font-size: 1rem;
+		}
+	}
+
+	.arrow {
+		display: inline-block;
+		transform: scale(66%);
+		color: #c60000;
+
+		&.up {
+			color: #409d69;
 		}
 	}
 
